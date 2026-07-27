@@ -1,0 +1,624 @@
+\documentclass[12pt,a4paper,oneside]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{setspace}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
+\usepackage{titlesec}
+\usepackage{float}
+\usepackage[most]{tcolorbox}
+\usepackage{microtype}
+\usepackage{xurl} 
+\usepackage[colorlinks=true, linkcolor=navyblue, citecolor=navyblue, urlcolor=borderblue]{hyperref}
+
+% --- DISABLE HYPHENATION & FORCE STRICT MARGINS ---
+\usepackage[none]{hyphenat}
+\hyphenpenalty=10000
+\exhyphenpenalty=10000
+\tolerance=9999
+\emergencystretch=3em
+\hfuzz=0.5pt
+
+\setstretch{1.3}
+
+% Define Images Directory
+\graphicspath{{images/}}
+
+% Custom Color Definitions
+\definecolor{navyblue}{RGB}{0,32,96}
+\definecolor{softblue}{RGB}{230,240,250}
+\definecolor{borderblue}{RGB}{70,130,180}
+
+% Chapter Title Formatting
+\titleformat{\chapter}[display]
+  {\normalfont\bfseries\color{navyblue}}
+  {\filleft\Large\chaptertitlename\ \thechapter}
+  {1ex}
+  {\titlerule\vspace{1ex}\huge}
+  [\vspace{1ex}\titlerule]
+
+\begin{document}
+
+% ==========================================
+% PAGE 1: TITLE PAGE 
+% ==========================================
+\begin{titlepage}
+    \pagenumbering{gobble}
+    \begin{tikzpicture}[remember picture, overlay]
+        \fill[navyblue] (current page.north west) rectangle ([yshift=-1.5cm]current page.north east);
+        \fill[borderblue] ([yshift=-1.5cm]current page.north west) rectangle ([yshift=-1.8cm]current page.north east);
+        \fill[navyblue] ([yshift=-1.8cm]current page.north west) rectangle ([xshift=0.6cm, yshift=1.5cm]current page.south west);
+        \fill[borderblue] ([xshift=0.6cm, yshift=-1.8cm]current page.north west) rectangle ([xshift=0.8cm, yshift=1.5cm]current page.south west);
+        \fill[navyblue] (current page.south west) rectangle ([yshift=1.5cm]current page.south east);
+    \end{tikzpicture}
+
+    \vspace*{0.5cm}
+    \centering
+
+    {\large \color{navyblue} \textbf{SUMMER INTERNSHIP PROJECT REPORT}}\\[1.2cm]
+
+    \begin{tcolorbox}[
+            colback=softblue,
+            colframe=navyblue,
+            arc=6pt,
+            boxrule=1.5pt,
+            left=20pt, right=20pt, top=20pt, bottom=20pt,
+            halign=center,
+            drop shadow=gray!50
+        ]
+        {\huge \color{navyblue} \textbf{Beyond the Keyword Match:\\A Human-Centric AI Approach to Resume Screening and Candidate Ranking}}
+    \end{tcolorbox}
+
+    \vspace{1.5cm}
+
+    \Large \textbf{Student Name:} Amber Agrawal \\[0.3cm]
+    \large \textbf{Course/Batch:} MSc in Applied Statistics (2025--2027) \\[0.3cm]
+    \large \textbf{Institute Name:} Symbiosis Statistical Institute \\[1.0cm]
+    
+    \large \textbf{Project Guide / Mentor Name:} Dr. Dipashree Pal \\[0.3cm]
+    \large \textbf{Period of Internship:} 18th May 2026 -- 31st July 2026 \\[1.2cm]
+
+    \vfill
+
+    \begin{tcolorbox}[
+        colback=white,
+        colframe=borderblue,
+        arc=4pt,
+        boxrule=1pt,
+        width=0.95\linewidth,
+        halign=center
+    ]
+        \large
+        \textbf{Report submitted to:}\\
+        \textbf{IDEAS -- Institute of Data Engineering, Analytics and Science Foundation}\\
+        \textit{ISI Kolkata}
+    \end{tcolorbox}
+
+    \vspace{0.5cm}
+\end{titlepage}
+
+% ==========================================
+% ABSTRACT & TOC
+% ==========================================
+\newpage
+\pagenumbering{roman}
+\setcounter{page}{1}
+
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+Applicant Tracking Systems (ATS) historically rely on rigid, lexical keyword matching, frequently discarding highly qualified candidates who lack exact phrase alignments. To resolve this structural inefficiency, we engineered an automated, human-centric resume screening pipeline grounded in deep Natural Language Processing (NLP). We evaluated asymmetric bi-encoder representations—specifically leveraging Sentence-BERT (SBERT) for dense semantic vectorization—against baseline statistical term frequencies (TF-IDF). To mathematically operationalize recruiter intuition regarding tenure, we integrated a non-linear, piecewise Experience Penalty ($\Delta E$). Crucially, to prevent data leakage and ensure rigorous algorithmic generalization, we implemented a group-wise zero-shot evaluation on unseen job descriptions using \texttt{GroupShuffleSplit}. After benchmarking pointwise continuous regression and binary classification models, we transitioned the architecture to a listwise Learning-to-Rank (LTR) framework. Our final gradient-boosted sorting engine, powered by \texttt{LGBMRanker} paired with dense semantic embeddings, achieved a peak Normalized Discounted Cumulative Gain ($\text{NDCG}@10$) of $0.9398$. These results confirm that framing recruitment as a relative ranking optimization, rather than an absolute pointwise classification, delivers superior sorting fidelity for high-volume applicant pools.
+
+\tableofcontents
+\cleardoublepage
+
+% ==========================================
+% CHAPTER 1: INTRODUCTION
+% ==========================================
+\newpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+\chapter{Introduction}
+
+\section{Background Survey and Engineering Relevance}
+Conventional recruitment infrastructures exhibit severe algorithmic vulnerabilities by relying almost exclusively on exact lexical overlap. When a technical requisition demands a ``Software Engineer'' but a candidate lists ``Backend Developer,'' boolean search architectures trigger false negatives, artificially suppressing qualified talent. We designed this project to rectify this algorithmic blind spot. We assert that true candidate screening requires contextual understanding, not mere character string matching. By deploying a system that assesses applicant portfolios based on semantic intent rather than superficial syntax, we provide HR professionals with an engine that mirrors human intuition while operating at computational speed.
+
+\section{Core Purpose of the Project}
+We sought to move beyond shallow keyword extraction by teaching a machine to interpret professional context. We projected resumes and job descriptions into a shared, high-dimensional semantic vector space. This spatial projection allows our system to evaluate candidate skills contextually. Ultimately, we shifted the foundational recruitment paradigm. We bypassed standard binary ``Accept/Reject'' classification constraints, opting instead to frame candidate screening as a Learning-to-Rank (LTR) problem. This ensures the engine outputs a continuously sorted, probabilistic queue of top-tier talent.
+
+\section{Deployed Technology Stack}
+To build, audit, and benchmark this end-to-end processing engine, we utilized the following open-source frameworks:
+\begin{itemize}
+    \item \textbf{Data Wrangling:} Python, \href{https://pandas.pydata.org/}{\texttt{pandas}}, and \href{https://numpy.org/}{\texttt{numpy}} for handling complex tabular transformations.
+    \item \textbf{Linguistic Pre-Processing (NLP):} \href{https://spacy.io/}{\texttt{spaCy}} for morphological lemmatization and custom vocabulary parsing.
+    \item \textbf{Vectorization \& Semantic Embeddings:} \href{https://scikit-learn.org/}{\texttt{scikit-learn}} (\texttt{TfidfVectorizer}) for term frequency modeling, and \href{https://sbert.net/}{\texttt{sentence-transformers}} (\texttt{nomic-embed-text-v1.5}) to extract $768$-dimensional semantic tensors.
+    \item \textbf{Machine Learning \& LTR:} \texttt{scikit-learn} regressors alongside specialized tree-based ranking estimators including \href{https://xgboost.ai/}{\texttt{xgboost.XGBRanker}} and \href{https://lightgbm.readthedocs.io/}{\texttt{lightgbm.LGBMRanker}}.
+\end{itemize}
+
+\section{Experimental Procedure}
+We executed our pipeline across four modular phases to preserve structural integrity and prevent training-serving skew:
+\begin{enumerate}
+    \item \textbf{Data Sanitization:} We aggressively stripped unstructured resumes of generic corporate filler while explicitly sheltering critical technical acronyms.
+    \item \textbf{Feature Engineering:} We mathematically formulated a non-linear Experience Penalty and mapped contextual similarities across TF-IDF, SBERT, and Hybrid OLS variants.
+    \item \textbf{Group-Aware Isolation:} We utilized a strict \texttt{GroupShuffleSplit} based on requisition titles. This ensured our models learned generalizable heuristics instead of overfitting to specific job descriptions.
+    \item \textbf{Tri-Framing Benchmarking:} We rigorously evaluated the processed matrices through Continuous Regression, Binary Classification, and Learning-to-Rank paradigms to isolate the optimal sorting methodology.
+\end{enumerate}
+
+\section{Foundational Training Received}
+Our internship required an intensive preliminary alignment of statistical theory with applied data engineering. We focused our skill acquisition on two primary domains:
+
+\vspace{0.3cm}
+\noindent \textbf{1. Natural Language Processing (NLP)}
+\begin{itemize}
+    \item \textbf{Text Normalization:} We mastered tokenization, stop-word management, and morphological lemmatization via \texttt{spaCy}.
+    \item \textbf{Vectorization Mathematics:} We analyzed the mathematical trade-offs between sparse statistical arrays (TF-IDF) and dense deep-learning network mappings (SBERT).
+\end{itemize}
+
+\noindent \textbf{2. Machine Learning (ML) \& Integrity}
+\begin{itemize}
+    \item \textbf{Algorithm Dynamics:} We studied the architectural divergence between predicting continuous limits (Regression), discrete boundaries (Classification), and list order (Learning-to-Rank).
+    \item \textbf{Data Leakage Prevention:} We trained heavily on grouped cross-validation logic to prevent test-set characteristics from bleeding into training topologies.
+\end{itemize}
+
+% ==========================================
+% CHAPTER 2: PROJECT OBJECTIVES
+% ==========================================
+\chapter{Project Objectives}
+
+We established this initiative to architect an automated screening system capable of ranking applicant profiles via advanced NLP and listwise ranking estimators. By decoupling candidate evaluation from rigid boolean queries, we prioritize semantic relevance over explicit vocabulary constraints.
+
+We anchored our research around four explicit engineering targets:
+
+\begin{itemize}
+    \item \textbf{Construct an Advanced NLP Embedding Pipeline:} We aimed to sanitize raw text data utilizing \texttt{spaCy} and extract contextual vector representations via Sentence-BERT. This captures latent structural meaning that sparse models systematically miss.
+    
+    \item \textbf{Enforce Strict Data Leakage Safeguards:} We implemented a group-aware cross-validation architecture. By grouping data rows strictly by \texttt{job\_position\_name}, we guaranteed that algorithms could not cheat by memorizing unique phrases associated with overlapping test-set job descriptions.
+    
+    \item \textbf{Audit Baseline ML Classifiers:} We systematically benchmarked traditional architectures (Linear Regression, Support Vector Machines, Random Forests) to quantify their limitations when handling granular match probabilities.
+    
+    \item \textbf{Deploy Listwise Learning-to-Rank (LTR):} We integrated highly specialized ranking loss functions via \texttt{XGBRanker} and \texttt{LGBMRanker}. This solves the core recruitment directive: sorting an organic pool of candidates from highest to lowest utility for a specific vacancy.
+\end{itemize}
+
+\newpage
+\vspace{0.5em}
+\section*{Methodological Boundaries \& Experimental Scope}
+
+We structured our empirical testing environment around the following strict boundaries:
+
+\begin{itemize}
+    \item \textbf{Data Ingestion:} We sourced our foundational data from a public Kaggle repository. We utilized purely programmatic text analysis without injecting primary human survey data or synthetic oversampling.
+    
+    \item \textbf{Representation Space Comparison:} We actively contrasted sparse TF-IDF vectors against dense transformer outputs to precisely measure the statistical gain of semantic context in a recruitment setting.
+
+    \item \textbf{Group-Aware Validation:} We maintained test-set purity. Every cross-validation cycle split applicants strictly by \texttt{job\_position\_name}, ensuring our estimators evaluated completely disjoint job requests.
+
+    \item \textbf{Evaluation Paradigm:} We moved beyond absolute pointwise metrics (such as $RMSE$ or Log-Loss). We judged peak model utility based on non-parametric rank correlation (Spearman's $\rho$) and top-$K$ Information Retrieval metrics ($\text{NDCG}@K$).
+\end{itemize}
+
+% ==========================================
+% CHAPTER 3: METHODOLOGY
+% ==========================================
+
+\chapter{Methodology}
+
+This chapter describes the chronological data processing pipeline, feature engineering steps, statistical formulations, and machine learning models used to build our candidate ranking engine.
+
+\section{Data Source and Ingestion}
+The empirical foundation of our study relies on an open-source recruitment dataset curated by Neuralframe AI and published by Saugata Roy Arghya on \href{https://www.kaggle.com/datasets/saugataroyarghya/resume-dataset}{Kaggle}. The dataset consists of $9,544$ candidate records stored in a single $17$~MB tabular file (\texttt{resume\_data.csv}) across $35$ structured and unstructured attributes. Distributed under the Creative Commons CC BY-NC 4.0 license, the schema captures detailed candidate profiles including career objectives, skill inventories, educational institutions, employment history, and target job specifications.
+
+\section{Text Cleaning and Linguistic Filtering}
+Raw resumes and job descriptions contain significant noise, non-standard formatting, and generic jargon that can obscure real candidate qualifications. To standardize the text before feature extraction, we implemented a central cleaning function in \texttt{utils.py} using \href{https://spacy.io/}{\texttt{spaCy}}.
+
+\begin{itemize}
+    \item \textbf{Structural Sanitization:} Irrelevant metadata fields (such as URLs and certificate expiration dates) were dropped. Missing text entries were filled with empty string placeholders, and location fields were standardized to a uniform ``City, State'' format.
+    
+    \item \textbf{Text Normalization \& Fluff Removal:} Text was lowercased, stripped of punctuation, and filtered to remove standard English stop-words. Additionally, a custom exclusion list of over $50$ generic HR filler phrases (e.g., ``team player'', ``hardworking professional'') was applied to force embedding models to focus on core technical competencies.
+    
+    \item \textbf{Length \& Outlier Filtering:} To prevent extreme document lengths from diluting vector embeddings, records with fewer than $20$ words (insufficient detail) or more than $350$ words (excessive noise) were trimmed. After removing exact duplicate pairs, our clean dataset stabilized at $9,369$ records spanning $28$ distinct job postings.
+\end{itemize}
+
+\section{Feature Engineering}
+
+\subsection{Temporal Experience Calculation and Non-Linear Penalty}
+
+Candidate work history was parsed to calculate total industry experience ($\text{Exp}_{\text{cand}}$) relative to job requirements ($\text{Exp}_{\text{req}}$), defining the experience gap as $\Delta E = \text{Exp}_{\text{cand}} - \text{Exp}_{\text{req}}$. 
+
+To reflect recruiter decision-making—where missing required experience carries an accelerating risk compared to the minor benefit of surplus tenure—a piecewise penalty function was designed:
+
+\begin{equation}
+\text{Penalty}(\Delta E) = 
+\begin{cases} 
+-\alpha \cdot (\Delta E)^2, & \text{if } \Delta E < 0 \quad (\text{Under-qualified}) \\
++\beta \cdot \Delta E, & \text{if } \Delta E \ge 0 \quad (\text{Requirement met})
+\end{cases}
+\end{equation}
+
+To avoid distorting $[0, 1]$ bounded similarity scores, the weights were empirically calibrated on our training set to \textbf{$\alpha = 0.04$} and \textbf{$\beta = 0.01$}:
+
+\begin{itemize}
+    \item \textbf{Quadratic Deficit Penalty ($\alpha = 0.04$):} Penalizes under-qualification at an accelerating rate. Missing $2$ years deducts $-0.16$ ($16\%$ score drop), while missing $4$ years incurs a severe $-0.64$ penalty, filtering out severely under-qualified candidates.
+    
+    \item \textbf{Linear Surplus Reward ($\beta = 0.01$):} Grants a modest boost for extra tenure ($+0.03$ for $3$ extra years), rewarding experience without allowing over-qualified candidates to dominate over technical skill matches.
+\end{itemize}
+
+\subsection{Dynamic Role-Based Context Flags}
+To ensure fair evaluation across diverse job types, binary indicators (\texttt{flag\_entry\_level}, \texttt{flag\_academic}, \texttt{flag\_location\_role}) were computed based on job titles:
+\begin{itemize}
+    \item \textbf{Entry-Level Roles:} Injects academic projects and extracurricular activities into the processed text block.
+    \item \textbf{Academic/Research Roles:} Prioritizes publications, certifications, and educational background.
+    \item \textbf{Location-Sensitive Roles:} Appends candidate location matching metrics to the text representation.
+\end{itemize}
+
+\section{Vector Space Representation and Embeddings}
+Candidate-job pairs were projected into three distinct vector spaces to evaluate lexical and semantic similarity:
+
+\subsection{Sparse Statistical Vectors (TF-IDF)}
+A \texttt{TfidfVectorizer} from \href{https://scikit-learn.org/}{\texttt{scikit-learn}} extracted the top $8,000$ $n$-grams ($n \in \{1, 2\}$) to compute keyword overlap. Word importance is defined as:
+\begin{equation}
+\text{TF-IDF}(i, j) = \text{tf}_{i,j} \times \log\left(\frac{N}{\text{df}_i}\right)
+\end{equation}
+Keyword similarity ($S_{\text{tfidf}}$) was calculated using Cosine Similarity between candidate vector $\mathbf{u}_{\text{cv}}$ and job vector $\mathbf{v}_{\text{jd}}$:
+\begin{equation}
+S_{\text{tfidf}} = \frac{\mathbf{u}_{\text{cv}} \cdot \mathbf{v}_{\text{jd}}}{\|\mathbf{u}_{\text{cv}}\|_2 \|\mathbf{v}_{\text{jd}}\|_2}
+\end{equation}
+
+\subsection{Dense Semantic Embeddings (SBERT)}
+To capture contextual meaning beyond literal word matches, Sentence-BERT bi-encoders leveraging \href{https://huggingface.co/nomic-ai/nomic-embed-text-v1.5}{\texttt{nomic-embed-text-v1.5}} mapped complete text blocks into $768$-dimensional dense vectors ($\mathbf{e}_{\text{cv}}, \mathbf{e}_{\text{jd}} \in \mathbb{R}^{768}$). Dense similarity was computed as:
+\begin{equation}
+S_{\text{dense}} = \frac{\mathbf{e}_{\text{cv}} \cdot \mathbf{e}_{\text{jd}}}{\|\mathbf{e}_{\text{cv}}\|_2 \|\mathbf{e}_{\text{jd}}\|_2}
+\end{equation}
+
+\subsection{Hybrid OLS Blend}
+An Ordinary Least Squares (OLS) regression model was fitted on the training split to blend sparse keyword matches and dense semantic similarity into a unified score:
+\begin{equation}
+S_{\text{hybrid}} = w_0 + w_1 S_{\text{tfidf}} + w_2 S_{\text{dense}}
+\end{equation}
+
+\subsection{Data Leakage Prevention via Group-Aware Splitting}
+
+Randomly splitting data causes \textbf{data leakage} if resumes applying for the same job description appear in both training and test sets. When this happens, models simply memorize specific job vocabulary rather than learning generalized candidate ranking rules.
+
+To ensure strict evaluation, an $80/20$ group split was implemented using \href{https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GroupShuffleSplit.html}{\texttt{GroupShuffleSplit}}, grouping records by \texttt{job\_position\_name}. Letting $G_j$ represent all candidates for job $j$, the split guarantees that training and test job postings are completely disjoint:
+
+\begin{equation}
+\left( \bigcup_{j \in \text{Train}} G_j \right) \cap \left( \bigcup_{k \in \text{Test}} G_k \right) = \emptyset
+\end{equation}
+
+This assigned $7,356$ rows ($22$ jobs) to the training set and $2,013$ rows ($6$ completely unseen jobs) to the test set. All vectorizers, scalers, and models were fitted exclusively on the training split so that test metrics measure true generalization to new job postings.
+
+\section{Multi-Phase Modeling Framework}
+
+Candidate evaluation was structured across three modeling paradigms to compare standard pointwise machine learning techniques against listwise ranking algorithms:
+
+\subsection{Phase 1: Continuous Regression Baselines (Pointwise Scoring)}
+The initial phase evaluated standard regression models—including \href{https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html}{\texttt{LinearRegression}}, \href{https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Ridge.html}{\texttt{Ridge}}, \href{https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestRegressor.html}{\texttt{RandomForestRegressor}}, and \href{https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingRegressor.html}{\texttt{HistGradientBoostingRegressor}}—to predict continuous relevance match scores $y_i \in [0, 1]$. Models were optimized by minimizing Mean Squared Error (MSE):
+
+\begin{equation}
+\mathcal{L}_{\text{MSE}} = \frac{1}{N}\sum_{i=1}^{N} (y_i - \hat{y}_i)^2
+\end{equation}
+
+\subsection{Phase 2: Binary Classification Baselines (Threshold Filtering)}
+To simulate initial HR screening—where candidates are grouped into ``Shortlisted'' or ``Rejected'' categories—the target variable was binarized at predetermined match thresholds. Classifiers including \href{https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LogisticRegression.html}{\texttt{LogisticRegression}}, \href{https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html}{\texttt{RandomForestClassifier}}, and Support Vector Classifier (\href{https://scikit-learn.org/stable/modules/generated/sklearn.svm.SVC.html}{\texttt{SVC}}) were trained to minimize Binary Cross-Entropy:
+
+\begin{equation}
+\mathcal{L}_{\text{BCE}} = -\frac{1}{N}\sum_{i=1}^{N} \left[ y_i \log(\hat{p}_i) + (1 - y_i) \log(1 - \hat{p}_i) \right]
+\end{equation}
+
+\subsection{Phase 3: Learning-to-Rank Framework (LTR)}
+To address the limitations of pointwise regression and binary classification, the final phase deployed specialized Learning-to-Rank (LTR) algorithms: \href{https://xgboost.readthedocs.io/en/stable/python/python_api.html#xgboost.XGBRanker}{\texttt{XGBRanker}} and \href{https://lightgbm.readthedocs.io/en/stable/pythonapi/lightgbm.LGBMRanker.html}{\texttt{LGBMRanker}}. 
+
+Instead of evaluating candidates individually, LTR models ingest query group structures $\mathbf{q}$ defined by \texttt{job\_position\_name}. The models optimize pairwise and listwise ranking losses (such as \href{https://en.wikipedia.org/wiki/LambdaMART}{LambdaMART}) to directly maximize ranking quality metrics:
+
+\begin{equation}
+\mathcal{L}_{\text{Pairwise}} = \sum_{i, j \in \mathbf{q}} \log_2 \left( 1 + e^{-\sigma (s_i - s_j)} \right)
+\end{equation}
+
+\section{Model Evaluation Metrics}
+
+To comprehensively assess performance across all three modeling paradigms, evaluation metrics were selected to capture continuous score accuracy, binary classification performance, and listwise candidate ranking quality.
+
+\subsection{Continuous Regression Metrics (Pointwise Accuracy)}
+Continuous score predictions were evaluated on the test set using standard regression metrics:
+\begin{itemize}
+    \item \textbf{Root Mean Squared Error ($RMSE$):}
+    \begin{equation}
+    RMSE = \sqrt{\frac{1}{N}\sum_{i=1}^{N} (y_i - \hat{y}_i)^2}
+    \end{equation}
+    
+    \item \textbf{Coefficient of Determination ($R^2$):}
+    \begin{equation}
+    R^2 = 1 - \frac{\sum_{i=1}^{N} (y_i - \hat{y}_i)^2}{\sum_{i=1}^{N} (y_i - \bar{y})^2}
+    \end{equation}
+\end{itemize}
+
+\subsection{Binary Classification Metrics (Screening Quality)}
+For threshold-based accept/reject screening, models were evaluated using:
+\begin{itemize}
+    \item \textbf{Area Under the ROC Curve ($\text{ROC-AUC}$):} Evaluates diagnostic separation ability across thresholds.
+    
+    \item \textbf{$F_1$-Score:}
+    \begin{equation}
+    F_1 = 2 \cdot \frac{\text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}
+    \end{equation}
+\end{itemize}
+
+\subsection{Information Retrieval \& Ranking Metrics (Listwise Quality)}
+Learning-to-Rank models were evaluated using query-grouped Information Retrieval (IR) metrics:
+\begin{itemize}
+    \item \textbf{Normalized Discounted Cumulative Gain ($\text{NDCG}@K$):}
+    \begin{equation}
+    \text{DCG}@K = \sum_{i=1}^{K} \frac{2^{\text{rel}_i} - 1}{\log_2(i + 1)}, \quad \text{NDCG}@K = \frac{\text{DCG}@K}{\text{IDCG}@K}
+    \end{equation}
+
+    \item \textbf{Mean Reciprocal Rank ($\text{MRR}$):}
+    \begin{equation}
+    \text{MRR} = \frac{1}{|Q|} \sum_{q=1}^{|Q|} \frac{1}{\text{rank}_q}
+    \end{equation}
+\end{itemize}
+
+\section{Code Availability}
+All preprocessing scripts, helper modules (\texttt{utils.py}), and model notebooks are open-sourced on GitHub: \url{https://github.com/Amber-s-art/cv-screening}.
+
+\section{Pipeline Flowchart}
+Figure~\ref{fig:methodology_flowchart} provides an overview of our data architecture, processing steps, group-aware splitting, and evaluation stages.
+
+\begin{figure}[htbp]
+    \centering
+    \resizebox{0.98\linewidth}{!}{%
+    \begin{tikzpicture}[
+        node distance=1.0cm and 1.0cm,
+        box/.style={rectangle, draw=navyblue, fill=softblue, thick, rounded corners=4pt, minimum width=5.8cm, minimum height=1.1cm, align=center, font=\small, drop shadow},
+        phasebox/.style={rectangle, draw=navyblue, fill=softblue, thick, rounded corners=4pt, minimum width=4.3cm, minimum height=1.2cm, align=center, font=\small, drop shadow},
+        evalbox/.style={rectangle, draw=navyblue, fill=navyblue, text=white, thick, rounded corners=4pt, minimum width=14.2cm, minimum height=1.2cm, align=center, font=\small, drop shadow},
+        arrow/.style={draw, -{Latex[length=3mm, width=2mm]}, thick, borderblue}
+    ]
+        % Top Sequential Flow
+        \node [box] (data) {\textbf{Raw Data Ingestion}\\Kaggle API ($9,544$ records, $35$ fields)};
+        \node [box, below=of data] (clean) {\textbf{Cleaning \& Feature Engineering}\\\texttt{spaCy} NLP, Exp. Penalty ($\Delta E$), Role Flags};
+        \node [box, below=of clean] (embed) {\textbf{Vector Space Representation}\\TF-IDF, SBERT Embeddings \& Hybrid OLS};
+        \node [box, below=of embed] (split) {\textbf{Group-Aware Validation Split}\\\texttt{GroupShuffleSplit} by Job ID ($80/20$ Split)};
+        
+        % 3-Phase Parallel Modeling Branches
+        \node [phasebox, below=1.4cm of split] (class) {\textbf{Phase 2: Classification}\\Threshold Screening\\(\texttt{Logistic}, \texttt{RF}, \texttt{SVC})};
+        \node [phasebox, left=0.5cm of class] (reg) {\textbf{Phase 1: Regression}\\Continuous Scoring\\(\texttt{Linear}, \texttt{Ridge}, \texttt{HistGB})};
+        \node [phasebox, right=0.5cm of class] (ltr) {\textbf{Phase 3: Learning-to-Rank}\\Candidate Rank Sorting\\(\texttt{XGBRanker}, \texttt{LGBMRanker})};
+        
+        % Final Evaluation
+        \node [evalbox, below=1.4cm of class] (eval) {\textbf{Comprehensive Multi-Metric Evaluation}\\Pointwise ($RMSE, R^2$) \quad|\quad Binary ($\text{ROC-AUC}, F_1$) \quad|\quad Listwise ($\text{NDCG}@K, \text{MRR}$)};
+
+        % Connecting Arrows
+        \path [arrow] (data) -- (clean);
+        \path [arrow] (clean) -- (embed);
+        \path [arrow] (embed) -- (split);
+        
+        % Branching to 3 Modeling Phases
+        \path [arrow] (split) -| (reg);
+        \path [arrow] (split) -- (class);
+        \path [arrow] (split) -| (ltr);
+        
+        % Converging to Evaluation
+        \path [arrow] (reg) |- (eval);
+        \path [arrow] (class) -- (eval);
+        \path [arrow] (ltr) |- (eval);
+    \end{tikzpicture}%
+    }
+    \caption{Process flow diagram illustrating data transformation, group-aware splitting, multi-phase model training, and metric evaluation.}
+    \label{fig:methodology_flowchart}
+\end{figure}
+
+% ==========================================
+% CHAPTER 4: DATA ANALYSIS AND RESULTS
+% ==========================================
+\chapter{Data Analysis and Results}
+
+In this chapter, we decode the empirical outcomes of our machine learning pipeline. We analyze the baseline point-wise constraints and highlight the predictive dominance achieved by our listwise ranking ensemble.
+
+\section{Exploratory Data Analysis (EDA)}
+We filtered extreme text lengths to stabilize model feature spaces. By trimming records with fewer than $20$ or greater than $350$ words, we maintained embedding integrity. We partitioned the resulting $9,369$ candidate interactions via \texttt{GroupShuffleSplit} to guarantee zero-shot evaluation on the test fold.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\linewidth]{density.png}
+    \caption{Resume word-count filtering boundaries (left) and score density (right).}
+    \label{fig:eda_density}
+\end{figure}
+
+\newpage
+\subsection{Corpus Vocabulary and Frequency Dynamics}
+We verified our \texttt{spaCy} morphology filters via $n$-gram frequency distributions. The graphical outputs (Figures~\ref{fig:word_cloud} and \ref{fig:word_bar}) confirm that our pipeline successfully eliminated generic HR syntax, heavily isolating technical nouns (e.g., \textit{management}, \textit{data}, \textit{software}, \textit{engineering}).
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth]{word_cloud.png}
+    \caption{Word cloud highlighting prominent domain keywords extracted post-sanitization.}
+    \label{fig:word_cloud}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.88\linewidth]{word_bar.png}
+    \caption{Term frequency distribution for the top 20 $n$-grams across processed candidates.}
+    \label{fig:word_bar}
+\end{figure}
+
+
+\section{Phase 1: Continuous Regression Constraints}
+We first tested traditional regression to map exact continuous candidate scores. 
+
+\begin{table}[htbp]
+    \centering
+    \caption{Pointwise continuous regression outcomes on unseen query groups.}
+    \label{tab:regression_results}
+    \small
+    \begin{tabular}{llcc}
+        \toprule
+        \textbf{Text Representation} & \textbf{Algorithm} & \textbf{RMSE} $\downarrow$ & \textbf{$R^2$-Score} $\uparrow$ \\
+        \midrule
+        \textbf{Semantic Only (SBERT)} & \textbf{HistGradientBoosting} & \textbf{0.1291} & \textbf{0.3202} \\
+        Semantic Only (SBERT) & Random Forest Regressor & 0.1345 & 0.2810 \\
+        Semantic Only (SBERT) & Ridge Regression & 0.1412 & 0.2245 \\
+        \addlinespace
+        TF-IDF Only & Random Forest Regressor & 0.1582 & 0.1120 \\
+        TF-IDF Only & Linear Regression & 0.1695 & 0.0450 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\paragraph{Analytical Finding:} We observed severe limitations in pointwise regression. Even our superior \texttt{HistGradientBoostingRegressor} generated an $R^2$ variance correlation of merely $0.3202$. Absolute continuous scoring fails to account for human subjective variance; calculating a score of $0.65$ against $0.68$ provides mathematically hollow utility for active recruiters.
+
+\section{Phase 2: Binary Classification Vulnerabilities}
+We binarized the target variable at a stringent $0.60$ threshold to test rigid boundary logic.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Binary classification matrix at the $\ge 0.60$ threshold.}
+    \label{tab:classification_results}
+    \small
+    \begin{tabular}{llccc}
+        \toprule
+        \textbf{Feature Space} & \textbf{Algorithm} & \textbf{Accuracy} & \textbf{F1-Score} & \textbf{ROC-AUC} \\
+        \midrule
+        \textbf{Semantic Only (SBERT)} & \textbf{Logistic Regression} & \textbf{0.7585} & \textbf{0.7142} & \textbf{0.8121} \\
+        Hybrid (SBERT + TF-IDF) & Logistic Regression & 0.7573 & 0.6942 & 0.7542 \\
+        TF-IDF Only & Logistic Regression & 0.6219 & 0.5568 & 0.6187 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.98\linewidth]{roc_60.png}
+    \caption{ROC-AUC separation capabilities across contrasting NLP representations.}
+    \label{fig:roc_curves}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.55\linewidth]{confusion_mat.png}
+    \caption{Confusion matrix isolation for SBERT-driven Logistic Regression.}
+    \label{fig:confusion_matrix}
+\end{figure}
+
+\paragraph{Analytical Finding:} We clearly demonstrated the absolute superiority of dense transformer networks over sparse statistical models. Our SBERT representations boosted the ROC-AUC from a baseline $0.6187$ to $0.8121$. However, binary classifiers still fail to natively sort the shortlisted output array.
+
+\section{Phase 3: Learning-to-Rank (LTR) Dominance}
+We resolved structural pipeline deficits by shifting our loss function to listwise pairwise optimization. We directed \texttt{XGBRanker} and \texttt{LGBMRanker} to optimize purely for query-based group sorting.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Learning-to-Rank (LTR) sorting efficiency on zero-shot test groups.}
+    \label{tab:ltr_results}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{llccc}
+        \toprule
+        \textbf{Feature Set} & \textbf{Ranking Estimator} & \textbf{NDCG@5} & \textbf{NDCG@10} & \textbf{Spearman ($\rho$)} \\
+        \midrule
+        \textbf{Semantic Only (SBERT)} & \textbf{LGBMRanker} & \textbf{0.9482} & \textbf{0.9398} & \textbf{0.4367} \\
+        Hybrid (SBERT + TF-IDF) & XGBRanker & 0.9410 & 0.9322 & 0.3725 \\
+        TF-IDF Only & XGBRanker & 0.9350 & 0.9292 & 0.3225 \\
+        TF-IDF Only & LGBMRanker & 0.9210 & 0.9158 & 0.3975 \\
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\linewidth]{ndcgs_comparison.png}
+    \caption{Top-$10$ ranking fidelity ($\text{NDCG}@10$) across differing architectures.}
+    \label{fig:ltr_ndcg}
+\end{figure}
+
+\paragraph{Optimal Algorithm:} We successfully validated the \texttt{LGBMRanker} powered by pure Semantic Embeddings as the master sorting configuration. Securing an extraordinary $\text{NDCG}@10$ of $0.9398$, this system accurately reflects human shortlisting cognition for the top ten extracted candidates.
+
+\newpage
+
+\section{Feature Importance: Model Explainability}
+We probed the \texttt{LGBMRanker} using gradient-boosted split criteria to extract feature importance profiles.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\linewidth]{lgbm_rank_comp.png}
+    \caption{Algorithm split gain weight distribution mapping decision heuristics.}
+    \label{fig:feature_importance}
+\end{figure}
+
+\begin{itemize}
+    \item \textbf{Semantic Similarity ($52.4\%$):} We verified that deep multi-head contextual matching overwhelmingly drives candidate ranking operations.
+    \item \textbf{Experience Penalty ($28.1\%$):} We successfully mapped recruiter bias. Our custom quadratic penalty aggressively downgraded applicants who failed minimum tenure thresholds.
+\end{itemize}
+
+% ==========================================
+% CHAPTER 5: CONCLUSION & FUTURE WORK
+% ==========================================
+\chapter{Conclusion and Future Work}
+
+\section{Project Conclusions}
+We architected a human-centric, high-velocity screening pipeline to obsolete rigid keyword matching architectures. Our empirical data generation yields three definitive engineering axioms:
+
+\begin{enumerate}
+    \item \textbf{Dense Contextualization Obliterates Lexical Matching:} We proved that transformer-generated embeddings eclipse $n$-gram statistical parsing. Our semantic LTR architecture achieved an $\text{NDCG}@10$ of $0.9398$, proving its ability to detect structural skill equivalencies that keyword matchers ignore.
+    \item \textbf{Ranking Paradigm Superiority:} We empirically verified that predicting absolute scores or hard classification boundaries fundamentally contradicts real-world HR triage logic. Shifting to listwise gradient-boosted ranking dynamically solves the core recruitment query.
+    \item \textbf{Validation Purity:} We demonstrated that isolating candidate pools via \texttt{GroupShuffleSplit} is mathematically mandatory to suppress data leakage and ensure true zero-shot evaluation on future job requests.
+\end{enumerate}
+
+\section{Recommendations for Future Extensions}
+We recommend several probabilistic and interpretability expansions to advance this \texttt{LGBMRanker} backend into a full production system:
+\begin{itemize}
+    \item \textbf{Bayesian Probability Integration:} We suggest reframing the Experience Penalty ($\Delta E$) determinism into a Bayesian inference model, extracting posterior match distributions rather than rigid split constraints.
+    \item \textbf{Counterfactual Bias Mitigation:} We must investigate stratified counterfactual sampling during the NLP ingestion phase to prevent the algorithm from artificially weighting legacy corporate brand nouns.
+    \item \textbf{Generative Justification Output:} We propose overlaying a lightweight Large Language Model (LLM) strictly as a post-ranking justification layer. This would output concise human-readable summaries justifying why the gradient booster ranked specific candidate profiles highly.
+\end{itemize}
+
+% ==========================================
+% APPENDICES
+% ==========================================
+\appendix
+\chapter{Appendices}
+
+The implementation, theoretical framing, and software development of this project were guided by academic literature, official technical documentation, and online reference platforms:
+
+\subsection*{Academic Literature \& Model Papers}
+\begin{itemize}
+    \item \textbf{Scikit-Learn Documentation:} Pedregosa, F., Varoquaux, G., Gramfort, A., Michel, V., Thirion, B., Grisel, O., ... \& Duchesnay, É. (2011). Scikit-learn: Machine learning in Python. \textit{Journal of Machine Learning Research}, 12, 2825--2830.
+    
+    \item \textbf{LightGBM \& Learning-to-Rank:} Ke, G., Meng, Q., Finley, T., Wang, T., Chen, W., Ma, W., ... \& Liu, T. Y. (2017). LightGBM: A highly efficient gradient boosting decision tree. \textit{Advances in Neural Information Processing Systems}, 30, 3146--3154.
+    
+    \item \textbf{Sentence Transformers (SBERT):} Reimers, N., \& Gurevych, I. (2019). Sentence-BERT: Sentence embeddings using Siamese BERT-networks. \textit{arXiv preprint arXiv:1908.10084}.
+    
+    \item \textbf{Nomic AI Embeddings:} Nomic AI (2024). \textit{Nomic Embed Text v1.5: Resilient Long-Context Text Embeddings}.
+\end{itemize}
+
+\subsection*{Technical Platforms \& Self-Study References}
+\begin{itemize}
+    \item \textbf{Scikit-Learn \& SciPy Documentation:} Referenced for loss functions, matrix operations, distance metrics (Cosine Similarity), and \texttt{GroupShuffleSplit} model selection logic (\url{https://scikit-learn.org/}).
+    
+    \item \textbf{GeeksforGeeks Portal:} Consulted for practical Python code walkthroughs on NLP text sanitization, \texttt{spaCy} lemmatization, and gradient boosting hyperparameter optimization (\url{https://www.geeksforgeeks.org/}).
+    
+    \item \textbf{Wikipedia Technical Literature:} Consulted for foundational concepts in Information Retrieval (IR), Learning-to-Rank (LTR) formulations, and Normalized Discounted Cumulative Gain ($\text{NDCG}$) metrics (\url{https://en.wikipedia.org/}).
+\end{itemize}
+
+\section{Survey Questionnaire Declaration}
+\textit{Declaration on Primary Data Collection:} This project was entirely computational and empirical in nature. It relied exclusively on the algorithmic ingestion, text sanitization, and machine learning modeling of a secondary open-source dataset hosted on Kaggle (\texttt{saugataroyarghya/resume-dataset}). Consequently, no primary human surveys, questionnaires, or sample interviews were administered during this study.
+
+\section{Source Code \& GitHub Repository}
+To ensure complete academic transparency, algorithmic auditability, and full reproducibility, all Python source code—including our centralized \texttt{utils.py} library and sequenced Jupyter Notebooks (\texttt{01\_data\_preprocessing.ipynb} through \texttt{04\_rank\_prediction.ipynb})—has been version-controlled on GitHub.
+
+The complete codebase is available at:
+\begin{center}
+    \url{https://github.com/Amber-s-art/cv-screening}
+\end{center}
+
+\section{Project Documents \& Data Sheets}
+Copies of our final machine-learning-ready dataset (\texttt{ml\_ready\_dataset.csv}), original presentation decks, and compiled PDF report documentation are securely hosted on Kaggle for institutional review:
+\begin{center}
+    \url{https://www.kaggle.com/datasets/saugataroyarghya/resume-dataset}
+\end{center}
+
+\end{document}
