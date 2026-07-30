@@ -1,8 +1,11 @@
 # Beyond the Keyword Match: A Human-Centric AI Approach to Resume Screening
 
 [![Canva Presentation](https://img.shields.io/badge/Canva-View_Presentation-8B4513?style=for-the-badge&logo=canva)](https://canva.link/rn4i541k6vbyec3)
+<<<<<<< HEAD
 ![Python Version](https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python)
 ![Jupyter Notebook](https://img.shields.io/badge/Jupyter-Notebook-orange?style=for-the-badge&logo=jupyter)
+=======
+>>>>>>> e6dbabf011156e16f59c3d9b7d045cd3135feb0d
 
 Applicant Tracking Systems (ATS) historically rely on rigid, lexical keyword matching, frequently discarding highly qualified candidates who lack exact phrase alignments. This project resolves this structural inefficiency by engineering an automated, human-centric resume screening pipeline grounded in deep Natural Language Processing (NLP) and Learning-to-Rank (LTR) algorithms.
 
@@ -38,7 +41,11 @@ By decoupling candidate evaluation from rigid boolean queries, this project prio
 
 ## ⚙️ Architecture & Pipeline Flow
 
+<<<<<<< HEAD
 The pipeline was executed across modular phases to preserve structural integrity and prevent training-serving skew. Below is the architectural flow of the data from raw text to ranked shortlist:
+=======
+The pipeline was executed across four modular phases to preserve structural integrity and prevent training-serving skew. Below is the architectural flow of the data from raw text to ranked shortlist:
+>>>>>>> e6dbabf011156e16f59c3d9b7d045cd3135feb0d
 
 ```mermaid
 graph TD
@@ -60,6 +67,7 @@ graph TD
     H -->|Zero-Shot Validation| K[Phase 3: Learning-to-Rank]
     
     K -->|LGBMRanker| L((Dynamic Ranked Shortlist))
+<<<<<<< HEAD
 
 ## 📂 Repository File Placement
 
@@ -133,3 +141,5 @@ Full-Stack Web Deployment: Integrate robust PDF-to-text parsing and build an acc
 This project was developed during a summer internship at the IDEAS Foundation, ISI Kolkata. Special thanks to Dr. Dipasree Pal for her guidance and mentorship throughout the research.
 
 If you have any questions about the methodology or code, feel free to open an issue or reach out via GitHub.
+=======
+>>>>>>> e6dbabf011156e16f59c3d9b7d045cd3135feb0d
