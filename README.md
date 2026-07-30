@@ -51,39 +51,30 @@ This project decouples candidate evaluation from rigid boolean queries by priori
 - **Reproducibility:** Python virtual environments, requirements.txt pinning
 
 ---
+## ⚙️ Architecture & Pipeline Flow
 
-## 🏗️ Architecture & Pipeline Flow
+The pipeline was executed across modular phases to preserve structural integrity and prevent training-serving skew. Below is the architectural flow of the data from raw text to ranked shortlist:
 
-The pipeline executes across four modular phases to preserve structural integrity and prevent training-serving skew:
-
-```
-Raw Resumes & Job Descriptions
-        ↓
-Linguistic Preprocessing (spaCy)
-  ├─ Lowercasing & tokenisation
-  ├─ Remove URLs, emails, special characters
-  ├─ Lemmatisation via morphological analysis
-  └─ Custom stop-word filtering (52 HR-fluff phrases)
-        ↓
-Dual Vectorisation
-  ├─ TF-IDF: Sparse 8,000-dimensional vectors
-  └─ SBERT: Dense 768-dimensional embeddings
-        ↓
-Feature Engineering
-  ├─ Experience gap (Exp_cand - Exp_req)
-  ├─ Piecewise non-linear penalty function
-  └─ Dynamic role-based context flags
-        ↓
-Group-Aware Train/Test Split (80/20)
-  └─ GroupShuffleSplit by job ID (zero data leakage)
-        ↓
-Three-Phase Evaluation
-  ├─ Phase 1: Pointwise Regression (RMSE, R²)
-  ├─ Phase 2: Binary Classification (ROC-AUC, F1)
-  └─ Phase 3: Listwise Ranking (NDCG@K, MRR, Spearman ρ)
-        ↓
-Final Ranked Shortlist
-  └─ LGBMRanker + SBERT (NDCG@10 = 0.9398)
+```mermaid
+graph TD
+    A[Raw Resumes & Job Descriptions] --> B(Linguistic Preprocessing via spaCy)
+    B --> C{Vectorization Generation}
+    
+    C -->|TF-IDF| D[Sparse Lexical Space]
+    C -->|SBERT| E[Dense Semantic Space]
+    
+    D --> F[Feature Concatenation]
+    E --> F
+    
+    G[Recruiter Intuition] -->|Asymmetric Experience Penalty| F
+    
+    F --> H{GroupShuffleSplit}
+    
+    H -->|Zero-Shot Validation| I[Phase 1: Pointwise Regression]
+    H -->|Zero-Shot Validation| J[Phase 2: Binary Classification]
+    H -->|Zero-Shot Validation| K[Phase 3: Learning-to-Rank]
+    
+    K -->|LGBMRanker| L((Dynamic Ranked Shortlist))
 ```
 
 ---
@@ -136,7 +127,6 @@ cv-screening-engine/
     └── cv_screening_presentation.pptx    # Final project presentation slides
 ```
 
----
 
 ## 🚀 Getting Started & Reproducibility
 
