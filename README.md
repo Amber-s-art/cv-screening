@@ -333,8 +333,8 @@ Found a bug or have a suggestion? Please open an issue or submit a pull request:
 ## 📧 Contact & Support
 
 **Author:** Amber Agrawal  
-**Email:** [amber.agrawal@symbiosis.ac.in](mailto:amber.agrawal@symbiosis.ac.in)  
-**GitHub:** [@amberagrawal](https://github.com/amberagrawal)  
+**Email:** [agrawalamber@gmmail.com](mailto:agrawalamber279@gmail.com)  
+**GitHub:** [@amberagrawal](https://github.com/Amber-s-art)  
 
 For questions about methodology, code, or reproducibility, please open an issue on GitHub.
 
