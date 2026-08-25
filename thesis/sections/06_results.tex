@@ -1,0 +1,181 @@
+\chapter{Results}
+\label{ch:results}
+
+In this section, I execute the \textbf{Tri-Framing experimental methodology} outlined in Section~\ref{ch:methodology}. By systematically transitioning from Continuous Regression to Binary Classification, and ultimately to Learning-to-Rank (LTR) architectures, I empirically demonstrate the absolute necessity of \textbf{listwise optimization} for automated resume screening. I evaluated all models strictly on the zero-shot, group-aware test matrix to guarantee robust generalization.
+
+\section{Phase 1: Continuous Regression Constraints}
+
+I began the evaluation phase by testing continuous regression estimators to ascertain whether an algorithmic mapping could reliably predict exact candidate relevance scores. I trained standard linear algorithms alongside advanced ensemble methods, evaluating them via \textbf{Root Mean Squared Error (RMSE)} and variance correlation (\textbf{$R^2$}).
+
+\begin{keyresult}{Phase 1 Ceiling}
+Best pointwise model: \textbf{\texttt{HistGradientBoosting}} + SBERT \quad $R^2 = \mathbf{0.3202}$, $\text{RMSE} = \mathbf{0.1291}$. Regression fundamentally fails to capture relative candidate ordering within a query group (see Section~\ref{sec:ranking_math}).
+\end{keyresult}
+
+This validates my theoretical argument from Section~\ref{sec:ranking_math}: predicting absolute numerical scores fails to capture the inherently comparative nature of human recruitment. Generating a pointwise prediction of $0.65$ versus $0.68$ provides negligible operational value to an HR professional who ultimately needs an \textbf{ordered shortlist}.
+
+\begin{table}[htbp]
+\centering
+\caption{Pointwise continuous regression outcomes evaluated on unseen query groups.}
+\label{tab:regression_results}
+\begin{tabular}{@{}llcc@{}}
+\toprule
+\textbf{Text Representation} & \textbf{Algorithm} & \textbf{RMSE} $\downarrow$ & $R^2$\textbf{-Score} $\uparrow$ \\
+\midrule
+\textbf{Semantic Only (SBERT)} & \textbf{HistGradientBoosting} & \textbf{0.1291} & \textbf{0.3202} \\
+Semantic Only (SBERT) & Random Forest Regressor & 0.1345 & 0.2810 \\
+Semantic Only (SBERT) & Ridge Regression & 0.1412 & 0.2245 \\
+\addlinespace
+TF-IDF Only & Random Forest Regressor & 0.1582 & 0.1120 \\
+TF-IDF Only & Linear Regression & 0.1695 & 0.0450 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Phase 2: Binary Classification Vulnerabilities}
+
+To simulate the rigid accept/reject mechanics of a legacy ATS pipeline, I transitioned to a discrete classification paradigm, binarizing the target variable at a strict $0.60$ threshold.
+
+\begin{table}[htbp]
+\centering
+\caption{Binary classification performance metrics at the $\geq 0.60$ selection threshold.}
+\label{tab:classification_results}
+\footnotesize
+\begin{tabular}{@{}llccc@{}}
+\toprule
+\textbf{Feature Space} & \textbf{Algorithm} & \textbf{Accuracy} & \textbf{F1-Score} & \textbf{ROC-AUC} \\
+\midrule
+\textbf{Semantic Only (SBERT)} & \textbf{Logistic Regression} & \textbf{0.7585} & \textbf{0.7142} & \textbf{0.8121} \\
+Hybrid (SBERT + TF-IDF) & Logistic Regression & 0.7573 & 0.6942 & 0.7542 \\
+TF-IDF Only & Logistic Regression & 0.6219 & 0.5568 & 0.6187 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth]{roc_60.png}
+    \caption{ROC-AUC separation capabilities contrasting sparse lexical features against dense semantic embeddings.}
+    \label{fig:roc_curves}
+\end{figure}
+
+\begin{keyresult}{Phase 2 Ceiling}
+Best classifier: SBERT + Logistic Regression \quad ROC-AUC $= \mathbf{0.8121}$, $F_1 = \mathbf{0.7142}$. This represents a $\mathbf{+31.3\%}$ improvement over TF-IDF (ROC-AUC $= 0.6187$), but binary classification still produces no ordered shortlist---it only outputs ``Shortlisted'' or ``Rejected''.
+\end{keyresult}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.68\linewidth]{confusion_mat.png}
+    \caption{Confusion matrix for the optimal SBERT-driven Logistic Regression classifier.}
+    \label{fig:confusion_matrix}
+\end{figure}
+
+\section{Phase 3: Learning-to-Rank (LTR) Dominance}
+
+To resolve the structural limitations of pointwise and threshold models, I evaluated two independent Learning-to-Rank architectures: a Pairwise estimator (\textbf{\texttt{XGBRanker}}) and a Listwise, metric-driven estimator (\textbf{\texttt{LGBMRanker}}). By executing both models on the exact same zero-shot dataset, I isolated which optimization approach best replicates human shortlisting cognition.
+
+\begin{table}[htbp]
+\centering
+\caption{Learning-to-Rank (LTR) sorting efficiency on zero-shot test groups.}
+\label{tab:ltr_results}
+\footnotesize
+\begin{tabular}{@{}llccc@{}}
+\toprule
+\textbf{Feature Set} & \textbf{Ranking Estimator} & \textbf{NDCG@5} & \textbf{NDCG@10} & \textbf{Spearman} ($\rho$) \\
+\midrule
+\textbf{Semantic Only (SBERT)} & \textbf{LGBMRanker} & \textbf{0.9482} & \textbf{0.9398} & \textbf{0.4367} \\
+Hybrid (SBERT + TF-IDF) & XGBRanker & 0.9410 & 0.9322 & 0.3725 \\
+TF-IDF Only & XGBRanker & 0.9350 & 0.9292 & 0.3225 \\
+TF-IDF Only & LGBMRanker & 0.9210 & 0.9158 & 0.3975 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{keyresult}{Optimal LTR Architecture}
+\textbf{\texttt{LGBMRanker}} + SBERT Semantic Embeddings achieved a peak \textbf{$\text{NDCG}@10 = \mathbf{0.9398}$} and $\text{NDCG}@5 = \mathbf{0.9482}$ on zero-shot unseen job groups. Scaling pairwise gradients by $|\Delta\text{NDCG}|$ (LambdaMART, Equation~\ref{eq:lambda_gradient}) forces the model to obsess over shortlist correctness, producing a ranking that accurately mirrors human recruiter cognition.
+\end{keyresult}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth]{ndcgs_comparison.png}
+    \caption{Top-10 ranking fidelity ($\text{NDCG}@10$) across differing optimization architectures.}
+    \label{fig:ltr_comparison}
+\end{figure}
+
+\section{Feature Importance: Interpreting Model Heuristics}
+\label{sec:feature_importance}
+
+To interpret the internal decision-making of the optimal \texttt{LGBMRanker}, I extracted the split-gain weight distribution, quantifying which engineered features drove the most tree-splitting information.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\linewidth]{lgbm_rank_comp.png}
+    \caption{Algorithm split-gain weight distribution, mapping the primary decision heuristics of the \texttt{LGBMRanker}. The Experience Penalty ($\Delta E$) accounts for $28.1\%$ of split-gain, confirming it as the second-most powerful ranking signal.}
+    \label{fig:feature_importance}
+\end{figure}
+
+\begin{itemize}
+    \item \textbf{Semantic Similarity (52.4\%):} Deep contextual skill matching is overwhelmingly the primary driver. The model fundamentally prioritizes what a candidate \emph{knows} over all other metadata.
+    \item \textbf{Experience Penalty (28.1\%):} Validating the framework I derived in Section~\ref{sec:deltaE_theory}, the piecewise quadratic $\Delta E$ penalty acts as a powerful secondary veto. It successfully encodes recruiter bias, systematically downgrading applicants whose temporal tenure severely violates the posting's minimum requirements.
+\end{itemize}
+
+\section{Evaluating the Experience-Gap Formulations}
+\label{sec:deltaE_empirical}
+
+Having derived the three competing $\Delta E$ formulations in Section~\ref{sec:deltaE_theory}, I now evaluate them empirically. Figure~\ref{fig:deltaE_comparison} plots all three adjusted competency scores against a shared $\texttt{Match\_Score} = 0.75$ baseline across the full observed range $\Delta E \in [-5, +5]$ years.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\linewidth]{penalty_curves.png}
+    \caption{Adjusted Competency Score vs.\ $\Delta E$ for all three penalty formulations, evaluated at a shared baseline \texttt{Match\_Score} of $0.75$. All three curves intersect exactly at $\Delta E = 0$ by construction. The Quadratic method (orange) reaches a hard floor of $0$ at $\Delta E \approx -4.33$ years (Equation~\ref{eq:quad_threshold}); the Sigmoid-Bayesian curve (green) decays smoothly throughout. I generated this output directly from the \texttt{06\_experience\_gap\_modeling.ipynb} notebook, confirming that the implementation matches the mathematical formulations from Section~\ref{sec:deltaE_theory}.}
+    \label{fig:deltaE_comparison}
+\end{figure}
+
+In Table~\ref{tab:deltaE_worked_example}, I pass seven representative candidate profiles through all three formulations, making the curve divergence numerically concrete.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Adjusted Competency Score under all three $\Delta E$ formulations for representative candidate profiles.}
+    \label{tab:deltaE_worked_example}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{cccccccc}
+        \toprule
+        $\text{Exp}_{\text{cand}}$ & $\text{Exp}_{\text{req}}$ & $\Delta E$ & \texttt{Match\_Score} &
+        \textbf{Linear (A)} & \textbf{Quadratic (B)} & \textbf{Sigmoid-Bayesian (C)} \\
+        \midrule
+        1.0  & 5 & $-4.0$ & 0.82 & 0.620 & 0.180 & 0.529 \\
+        3.0  & 5 & $-2.0$ & 0.78 & 0.680 & 0.620 & 0.638 \\
+        5.0  & 5 & $0.0$  & 0.75 & 0.750 & 0.750 & 0.750 \\
+        5.0  & 3 & $+2.0$ & 0.70 & 0.700 & 0.720 & 0.825 \\
+        8.0  & 5 & $+3.0$ & 0.88 & 0.880 & 0.910 & 0.954 \\
+        10.0 & 5 & $+5.0$ & 0.65 & 0.650 & 0.700 & 0.914 \\
+        0.5  & 5 & $-4.5$ & \textbf{0.91} & 0.685 & \textbf{0.100} & \textbf{0.677} \\
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+The final two rows are the most diagnostically important. The candidate at $\Delta E = -4.5$ with a strong prior of $\texttt{Match\_Score} = 0.91$ scores only $0.100$ under Method B (the Quadratic rule has clipped to near-zero). However, they retain a posterior of $0.677$ under Method C, because the strong semantic prior mathematically offsets the experience shortfall. This is the \textbf{Bayesian interaction effect} I derived formally in Equation~\eqref{eq:bayes_posterior}: the same gap produces a different adjustment depending on the prior belief.
+
+\subsection{Spearman Rank-Correlation Evaluation}
+\label{sec:rank_eval_example}
+
+To validate the Spearman evaluation harness I derived in Section~\ref{sec:spearman_theory}, I applied \texttt{scipy.stats.spearmanr} to the seven-profile table above against an illustrative target ranking. Table~\ref{tab:rank_eval_spearman} reports the output of the \texttt{evaluate\_rankings()} function in my \texttt{06\_experience\_gap\_modeling.ipynb} notebook.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Spearman rank correlation of each formulation against the illustrative target ranking ($N=7$).}
+    \label{tab:rank_eval_spearman}
+    \begin{tabular}{@{}lc@{}}
+        \toprule
+        \textbf{Method} & \textbf{Spearman} $\rho$ \\
+        \midrule
+        Quadratic (B) & 1.00 \\
+        Linear (A)    & 0.75 \\
+        Sigmoid (C)   & 0.75 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{remarkbox}{Methodological Note: Boundary-Value Validation}
+I deliberately constructed the seven profiles above; they were not randomly sampled. I included two severe deficit cases, the exact-match point ($\Delta E = 0$), and three surplus cases, spanning the full behavioral domain of $\Delta E$. This $N=7$ test is therefore a \textbf{mathematical boundary-value validation}, not a statistical significance test --- it confirms that I implemented all three formulations correctly, that they behave monotonically as designed, and that the evaluation harness (\texttt{apply\_methods()} $\to$ \texttt{evaluate\_rankings()} $\to$ \texttt{scipy.stats.spearmanr()}) is wired correctly. It serves as a necessary prerequisite before the corpus-scale statistical comparison proposed in Section~\ref{sec:future_work}, and it does not, on its own, establish that Method C is statistically superior to Method B across the full candidate pool.
+\end{remarkbox}

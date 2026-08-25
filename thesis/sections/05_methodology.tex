@@ -1,0 +1,226 @@
+\chapter{Methodology}
+\label{ch:methodology}
+
+Before deploying the complex semantic embedding models and Learning-to-Rank estimators, it was imperative that I construct a highly sanitized, empirically stable data foundation alongside an experimental design that honestly simulates a real-world Human Resources deployment. In this section, I detail the ingestion of the raw corpus, the rigorous linguistic filtering I executed via \texttt{spaCy}, the Exploratory Data Analysis (EDA) that drove my feature engineering decisions, and the strict partitioning logic I used to prevent target leakage. Finally, I outline my \textbf{Tri-Framing modeling framework} and the mathematical metrics I used to benchmark algorithmic success.
+
+\section{Data Source, Ingestion, and Schema}
+\label{sec:data_source}
+
+I derived the foundational data for this study from an open-source recruitment corpus compiled by Neuralframe AI and published on Kaggle. The raw ingestion file (\texttt{resume\_data.csv}) constitutes a 17 MB dataset comprising $9{,}544$ candidate records. Distributed under the Creative Commons CC BY-NC 4.0 license, the corpus provides highly granular professional profiles, including unstructured text fields for career objectives, technical skills, educational background, and employment histories, mapped against specific job postings.
+
+To process this for my automated pipeline, I transformed the raw corpus into an engineered schema, yielding the primary working file, \texttt{ml\_ready\_dataset.csv}. Table~\ref{tab:dataset_schema} outlines the core features I engineered during ingestion that pass into the modeling phases.
+
+\begin{table}[htbp]
+\centering
+\caption{Core schema architecture for the engineered \texttt{ml\_ready\_dataset.csv}.}
+\label{tab:dataset_schema}
+\small
+\renewcommand{\arraystretch}{1.5} % Increased row spacing for better readability
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{3.0cm}>{\raggedright\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{8.5cm}@{}}
+\toprule
+\textbf{Feature Name} & \textbf{Data Type} & \textbf{Description / Engineering Logic} \\
+\midrule
+\texttt{Resume\_Text} & String (Text) & The fully concatenated, structurally sanitized corpus of the candidate's professional profile. \\
+\texttt{Job\_Desc} & String (Text) & The sanitized requirements and qualifications of the target job posting. \\
+\texttt{Job\_Title} & Categorical & The specific role classification (e.g., Software Engineer, HR Manager), spanning 28 distinct groups. \\
+\texttt{Exp\_cand} & Float (Years) & Parsed aggregate years of professional experience possessed by the candidate. \\
+\texttt{Exp\_req} & Float (Years) & Minimum years of experience demanded by the job posting. \\
+\texttt{Delta\_E} & Float (Years) & The calculated experience mismatch ($\text{Exp}_{\text{cand}} - \text{Exp}_{\text{req}}$). \\
+\texttt{Match\_Score} & Float [0, 1] & Ground-truth relevance score or historical baseline SBERT semantic similarity. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Linguistic Sanitization and Dimensionality Reduction}
+\label{sec:text_cleaning}
+
+Raw resumes and corporate job descriptions represent some of the most chaotic unstructured text in modern data science. They are heavily polluted with inconsistent structural formatting, non-standard unicode characters, HTML artifacts, and ubiquitous corporate buzzwords that actively obscure a candidate's genuine technical qualifications.
+
+If I passed this raw text directly into the TF-IDF or SBERT vectorizers, the mathematical space would become severely distorted by \textbf{semantic noise}. To combat this, I architected a central text-cleaning pipeline inside \texttt{utils.py}, utilizing the \texttt{spaCy} natural language processing library to enforce strict morphological sanitization, as illustrated in Figure~\ref{fig:nlp_pipeline}.
+
+\begin{figure}[htbp]
+    \centering
+    \resizebox{0.95\linewidth}{!}{%
+    \begin{tikzpicture}[
+        node distance=1.0cm and 1.5cm,
+        box/.style={rectangle, draw=navyblue, fill=softblue, thick, rounded corners=4pt, minimum width=5.5cm, minimum height=1.2cm, align=center, font=\small, drop shadow},
+        arrow/.style={draw, -{Latex[length=3mm, width=2mm]}, thick, navyblue}
+    ]
+        \node [box] (raw) {Raw Unstructured Corpus\\(9,544 Resumes)};
+        \node [box, right=of raw] (regex) {Regex \& Structural Parsing\\(Remove URLs, Dates, HTML)};
+        \node [box, below=of regex] (lower) {Case Normalization \&\\Punctuation Ablation};
+        \node [box, left=of lower] (spacy) {spaCy Morphological\\Lemmatization};
+        \node [box, below=of spacy] (stop) {Custom HR Blocklist \&\\Stop-Word Removal};
+        \node [box, right=of stop] (clean) {Sanitized Semantic Corpus\\(Ready for Embedding)};
+
+        \path [arrow] (raw) -- (regex);
+        \path [arrow] (regex) -- (lower);
+        \path [arrow] (lower) -- (spacy);
+        \path [arrow] (spacy) -- (stop);
+        \path [arrow] (stop) -- (clean);
+    \end{tikzpicture}%
+    }
+    \caption{The sequential NLP sanitization pipeline designed to systematically reduce vocabulary dimensionality.}
+    \label{fig:nlp_pipeline}
+\end{figure}
+
+My pipeline executes three primary transformations:
+\begin{enumerate}
+    \item \textbf{Structural Sanitization via Regular Expressions:} I programmatically stripped out metadata that holds zero predictive validity for technical competence, such as hyperlinks, physical addresses, and certificate dates.
+    \item \textbf{Morphological Lemmatization:} Utilizing \texttt{spaCy}'s \texttt{en\_core\_web\_sm} model, I lowercased every document, stripped it of punctuation, and reduced it to its base lemmas.
+    \item \textbf{Custom Stop-Word Ablation:} Beyond standard English stop-words, I curated a domain-specific blocklist of over 50 pervasive HR phrases (e.g., ``team player'', ``synergy''), whose Term Frequency approaches maximum density, rendering their Inverse Document Frequency zero.
+\end{enumerate}
+
+\section{Exploratory Data Analysis (EDA)}
+\label{sec:eda}
+
+\subsection{Bounding the Vector Space: Token Length Filtering}
+Transformer-based models typically possess a strict maximum context window of 512 tokens. I defined empirical boundaries to manage this: I dropped records containing fewer than $20$ words as insufficient, and I truncated or dropped records exceeding $350$ words to prevent computational truncation artifacts.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth]{density.png}
+    \caption{Resume word-count filtering boundaries (left) and bimodal target-score density (right).}
+    \label{fig:eda_density}
+\end{figure}
+
+As depicted in Figure~\ref{fig:eda_density}, the word-count distribution reveals a log-normal shape, clustering primarily between 75 and 150 words. My final sanitized dataset comprised $9{,}369$ high-quality records mapping to $28$ distinct job categories.
+
+\subsection{Bimodal Density and Threshold Mechanics}
+The right panel of Figure~\ref{fig:eda_density} plots the density of the target semantic match scores, revealing a bimodal distribution where a massive cluster of generic applicants scores between $0.20$ and $0.40$, and qualified shortlists cluster around $0.60$ to $0.85$.
+
+\section{Corpus Vocabulary and Frequency Dynamics}
+\label{subsec:vocab}
+
+To confirm the sanitization pipeline (Section~\ref{sec:text_cleaning}) preserved the corpus's genuine technical signal rather than stripping it away, the surviving vocabulary was inspected directly, both qualitatively and quantitatively.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\linewidth]{word_cloud.png}
+    \caption{Word cloud highlighting the prominent domain keywords extracted post-sanitization.}
+    \label{fig:wordcloud}
+\end{figure}
+
+Figure~\ref{fig:wordcloud} gives a qualitative first read: font size scales with raw frequency, and the surviving vocabulary is dominated by concrete role and skill terms (\textit{manager}, \textit{engineer}, \textit{machine learn}, \textit{data analysis}) rather than the generic HR filler the blocklist was designed to remove. This is a useful sanity check, but a word cloud alone cannot support any quantitative claim, so the same vocabulary was re-examined as a ranked frequency count.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth]{word_bar.png}
+    \caption{Absolute term frequency distribution for the top 20 computational and operational $n$-grams.}
+    \label{fig:wordbar}
+\end{figure}
+
+Figure~\ref{fig:wordbar} makes that same picture numerically precise: \textit{management} and \textit{data} alone account for tens of thousands of occurrences each, with a long, gradually decaying tail down to more specialized terms like \textit{documentation} and \textit{process}. Together, Figures~\ref{fig:wordcloud} and~\ref{fig:wordbar} confirm that the dominant vectors remaining in the corpus are highly relevant terms like \textit{management}, \textit{data}, \textit{software}, and \textit{engineering} --- exactly the discriminative signal the TF-IDF and SBERT stages downstream depend on.
+
+\section{Data Leakage Prevention via Group-Aware Splitting}
+\label{sec:group_split}
+
+When I initially approached the partitioning of the sanitized resume dataset, I identified a catastrophic risk: \textbf{target data leakage}. Standard machine learning pipelines universally default to randomized splitting architectures, such as \texttt{train\_test\_split}. In the context of candidate--job matching, employing a random split is empirically invalid.
+
+Consider a scenario where 300 candidates apply for a specific ``Data Engineer'' vacancy. A random 80/20 split would allocate roughly 240 of these resumes to the training matrix and 60 to the hold-out test matrix. During training, the models would simply \textbf{memorize the highly specific, idiosyncratic vocabulary} associated with that exact ``Data Engineer'' job description, rather than learning the generalized geometric mapping between applicant skills and role requirements. When evaluated on the 60 test resumes, the model would produce artificially inflated accuracy scores. However, if deployed in a production ATS against a newly opened, previously unseen ``Financial Analyst'' role, the model's predictive capability would completely collapse.
+
+To enforce a genuine \textbf{zero-shot generalization test}, I discarded random splitting in favor of a strict \textbf{\texttt{GroupShuffleSplit}}, using the \texttt{Job\_Title} target as the discrete grouping identifier. Letting $G_j$ represent the set of all candidate resumes applying for job $j$, I formalize this strict group-aware isolation as:
+\begin{equation}
+\left(\bigcup_{j \in \text{Train}} G_j\right) \cap \left(\bigcup_{k \in \text{Test}} G_k\right) = \varnothing
+\label{eq:disjoint_split}
+\end{equation}
+
+By executing this architecture, I successfully partitioned $7{,}356$ rows (encompassing 22 distinct job postings) exclusively into the training set. I strictly populated the test set with $2{,}013$ rows mapped against 6 completely unseen job roles. Furthermore, I fitted all sparse vectorizers, standard scalers, and embedding calibrations \emph{exclusively} on the training split to preserve the absolute purity of the test matrix.
+
+\section{Experience Gap Distribution Analysis}
+\label{sec:deltaE_eda}
+
+I computed $\Delta E = \text{Exp}_{\text{cand}} - \text{Exp}_{\text{req}}$ for every candidate--job pair in the cleaned corpus of $9{,}369$ records. The distribution is markedly left-skewed, confirming that under-qualification is more common and severe in this corpus than over-qualification.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth]{candidate_pool.png}
+    \caption{Empirical distribution of the Experience Gap ($\Delta E$) across the full corpus. The dashed vertical line at $\Delta E^* \approx -4.33$ marks the saturation threshold of the quadratic penalty.}
+    \label{fig:deltaE_histogram}
+\end{figure}
+
+\section{The Tri-Framing Modeling Framework}
+\label{sec:multiphase}
+
+To rigorously prove that Learning-to-Rank (LTR) is the optimal paradigm for resume screening, I determined it was not sufficient to simply deploy an LTR model in isolation---I needed to empirically demonstrate the failure modes of standard predictive approaches first. Therefore, my experimental methodology spans three distinct phases, scaling in algorithmic complexity.
+
+\subsection{Phase 1: Continuous Regression Baselines (Pointwise Scoring)}
+
+In Phase 1, I evaluated \textbf{Pointwise Continuous Regression}. My hypothesis here was simple: can a standard regression estimator accurately predict a continuous relevance match score ($y_i \in [0,1]$)? I tested a suite of linear and non-linear regressors, including \texttt{LinearRegression}, \texttt{Ridge}, \texttt{RandomForestRegressor}, and \texttt{HistGradientBoostingRegressor}.
+
+I optimized these models by minimizing the \textbf{Mean Squared Error (MSE)} between the predicted score and the ground-truth semantic match:
+\begin{equation}
+\mathcal{L}_{\text{MSE}} = \frac{1}{N}\sum_{i=1}^{N} (y_i - \hat{y}_i)^2
+\label{eq:eval_mse}
+\end{equation}
+As I explore in Section~\ref{ch:results}, Pointwise models fail because MSE optimizes for absolute numerical proximity in a vacuum, remaining entirely blind to the relative ordinal hierarchy of the candidates.
+
+\subsection{Phase 2: Binary Classification Baselines (Threshold Filtering)}
+
+To mimic the binary nature of a traditional ATS---which essentially tosses candidates into ``Shortlisted'' (1) or ``Rejected'' (0) piles---I designed Phase 2 around \textbf{Threshold Classification}. I binarized the target variable using a strict $0.60$ semantic match threshold.
+
+I then trained boundary-focused classifiers, specifically \texttt{LogisticRegression}, \texttt{RandomForestClassifier}, and a Support Vector Classifier (\texttt{SVC}). I optimized these algorithms to minimize \textbf{Binary Cross-Entropy (BCE)} loss:
+\begin{equation}
+\mathcal{L}_{\text{BCE}} = -\frac{1}{N}\sum_{i=1}^{N} \big[y_i \log(\hat{p}_i) + (1-y_i)\log(1-\hat{p}_i)\big]
+\label{eq:bce}
+\end{equation}
+While classification simulates a naive HR screen, it completely fails to sort the ``Shortlisted'' candidates into a prioritized interview order.
+
+\subsection{Phase 3: Learning-to-Rank Framework (LTR)}
+
+Having established the limitations of point-prediction and discrete classification, I focused Phase 3 exclusively on specialized \textbf{Learning-to-Rank algorithms}: \texttt{XGBRanker} and \texttt{LGBMRanker}.
+
+Instead of evaluating rows independently, my LTR models process data as localized \textbf{query groups} ($q$), which in this architecture corresponds to the \texttt{Job\_Title} grouping. I tested two distinct LTR paradigms:
+\begin{itemize}
+    \item \textbf{Pairwise Optimization (\texttt{XGBRanker}):} This approach minimizes the number of ranking inversions by analyzing candidates in pairs, optimizing a logistic loss gradient:
+    \begin{equation}
+    \mathcal{L}_{\text{Pairwise}} = \sum_{i,j \in q} \log_2\!\left(1 + e^{-\sigma(s_i - s_j)}\right)
+    \label{eq:eval_pairwise_loss}
+    \end{equation}
+    \item \textbf{Listwise Optimization (\texttt{LGBMRanker}):} Utilizing LambdaMART, this model scales the pairwise gradient dynamically based on the impact a candidate swap has on the top-heavy Information Retrieval metric ($|\Delta \text{NDCG}|$).
+\end{itemize}
+
+\section{Mathematical Evaluation Metrics}
+\label{sec:eval_metrics}
+
+To holistically evaluate this Tri-Framing architecture, I deployed a precise suite of statistical metrics, choosing each to measure a different facet of modeling success.
+
+\subsection{Continuous and Classification Metrics}
+
+For the Pointwise Regression models in Phase 1, I used standard residual analysis:
+\begin{align}
+\text{RMSE} &= \sqrt{\frac{1}{N}\sum_{i=1}^{N}(y_i - \hat{y}_i)^2} \label{eq:eval_rmse} \\
+R^2 &= 1 - \frac{\sum_{i=1}^{N}(y_i - \hat{y}_i)^2}{\sum_{i=1}^{N}(y_i - \bar{y})^2} \label{eq:eval_r2}
+\end{align}
+
+For the Binary Classifiers in Phase 2, I assessed performance via \textbf{Area Under the Receiver Operating Characteristic Curve (ROC-AUC)}, which measures the model's threshold-agnostic separation capacity, alongside the harmonic mean of precision and recall (\textbf{$F_1$-Score}):
+\begin{equation}
+F_1 = 2 \cdot \frac{\text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}
+\label{eq:eval_f1}
+\end{equation}
+
+\subsection{Listwise Quality: Information Retrieval Metrics}
+
+Because recruiters typically only review the top 10 candidates for any given role, evaluating the entire sorted list equally is impractical. To capture top-heavy ranking fidelity, I utilized \textbf{Normalized Discounted Cumulative Gain ($\text{NDCG}@K$)}:
+\begin{align}
+\text{DCG}@K &= \sum_{i=1}^{K} \frac{2^{\text{rel}_i} - 1}{\log_2(i+1)}, \qquad
+\text{NDCG}@K = \frac{\text{DCG}@K}{\text{IDCG}@K} \label{eq:eval_ndcg}
+\end{align}
+The logarithmic denominator, $\log_2(i+1)$, acts as a severe decay penalty; an error at rank position $i=2$ damages the score exponentially more than an error at $i=20$.
+
+I also computed the \textbf{Mean Reciprocal Rank (MRR)} to quantify how rapidly the system surfaces the first highly relevant candidate:
+\begin{equation}
+\text{MRR} = \frac{1}{|Q|}\sum_{q=1}^{|Q|} \frac{1}{\text{rank}_q}
+\label{eq:eval_mrr}
+\end{equation}
+
+\subsection{Global Stability: Spearman's Rank Correlation}
+
+While $\text{NDCG}@K$ proves whether the model successfully generates an elite top-10 shortlist, I also required a metric to validate the global, ordinal stability of the mathematical models (particularly when evaluating the Experience Gap formulations in Section~\ref{sec:deltaE_theory}). For this, I implemented \textbf{Spearman's Rank Correlation ($\rho$)}.
+
+For $n$ paired observations, mapping the algorithmic rank $R_{X_i}$ against a human-targeted true rank $R_{Y_i}$, I calculate the rank discrepancy $d_i = R_{X_i} - R_{Y_i}$. I formally derive the correlation as:
+\begin{equation}
+\rho = 1 - \frac{6\sum_{i=1}^{n} d_i^2}{n(n^2-1)}
+\label{eq:eval_spearman}
+\end{equation}
+Unlike NDCG, Spearman's $\rho$ applies a uniform penalty to rank deviations regardless of where they occur in the list. By evaluating both $\text{NDCG}@K$ and $\rho$ simultaneously, I can confidently verify that the LTR pipeline is not only highly accurate at the top of the funnel but logically stable across the entire applicant pool.

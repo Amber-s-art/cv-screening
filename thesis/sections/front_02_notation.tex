@@ -1,0 +1,42 @@
+\chapter*{Notation}
+\addcontentsline{toc}{chapter}{Notation}
+
+I use the symbols below consistently across all chapters of this report.
+
+\begin{center}
+\small % Slightly reduces font size to guarantee single-page fit
+\renewcommand{\arraystretch}{1.15} % Reduced row height from 1.3
+\begin{longtable}{@{} >{\raggedright\arraybackslash}p{4.6cm} >{\raggedright\arraybackslash}p{9.5cm} @{}}
+\toprule
+\textbf{Symbol} & \textbf{Definition} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Symbol} & \textbf{Definition} \\
+\midrule
+\endhead
+\multicolumn{2}{c}{\textit{Data \& Feature Symbols}} \\[2pt]
+$\text{Exp}_{\text{cand}}$ & Candidate's total years of professional experience \\
+$\text{Exp}_{\text{req}}$ & Job posting's stated required years of experience \\
+$\Delta E$ & Experience gap: $\text{Exp}_{\text{cand}} - \text{Exp}_{\text{req}}$ \\
+$G_j$ & Set of all candidate records associated with job posting $j$ \\
+$N$ & Total number of candidate--job records in a given split \\[4pt]
+\multicolumn{2}{c}{\textit{Vector Space \& Similarity Symbols}} \\[2pt]
+$\mathbf{u}_{\text{cv}}, \mathbf{v}_{\text{jd}}$ & Sparse TF-IDF vectors for a resume and job description \\
+$\mathbf{e}_{\text{cv}}, \mathbf{e}_{\text{jd}} \in \mathbb{R}^{768}$ & Dense SBERT embedding vectors \\
+$S_{\text{tfidf}}, S_{\text{dense}}, S_{\text{hybrid}}$ & Cosine-similarity / OLS-blended match scores \\
+\texttt{Match\_Score} & Baseline semantic similarity score, $\in [0,1]$ \\[4pt]
+\multicolumn{2}{c}{\textit{Experience-Gap Modeling Symbols}} \\[2pt]
+$\alpha, \beta$ & Quadratic-deficit / linear-surplus penalty coefficients \\
+$k, k_s, \delta$ & Linear slope; sigmoid steepness; sigmoid inflection point \\
+$P(C)$ & Prior probability that a candidate is competent \\
+$L(\Delta E)$ & Sigmoid likelihood of observing $\Delta E$ given competence \\
+$P(C \mid \Delta E)$ & Posterior probability of competence after observing $\Delta E$ \\[4pt]
+\multicolumn{2}{c}{\textit{Evaluation \& Ranking Symbols}} \\[2pt]
+$\text{RMSE}, R^2$ & Pointwise regression error and variance-explained metrics \\
+$F_1, \text{ROC-AUC}$ & Binary classification quality metrics \\
+$\text{NDCG}@K, \text{MRR}$ & Top-$K$ ranking quality: Normalized Discounted Cumulative Gain, Mean Reciprocal Rank \\
+$\rho$ & Spearman's rank correlation coefficient \\
+\bottomrule
+\end{longtable}
+\end{center}

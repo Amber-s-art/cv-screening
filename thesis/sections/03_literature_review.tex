@@ -1,0 +1,466 @@
+\chapter{Literature Review}
+\label{ch:literature_review}
+
+This section derives the mathematical and statistical scaffolding that underpins my entire automated CV screening pipeline. Rather than treating the NLP and ML algorithms as opaque black boxes, I dissect the core vector space representations, listwise ranking loss functions, and probabilistic inference frameworks from first principles. This includes a dedicated formal treatment of the Experience Gap ($\Delta E$) feature. I place this theoretical review here because my three competing formulations are fundamentally mathematical claims about what geometric shape a penalty should take---a question that belongs to statistical theory before it can be empirically answered by data.
+
+\section{Natural Language Processing: The Statistical Sanitization of Text}
+\label{sec:nlp_foundations}
+
+Before projecting resumes into any mathematical vector space, I must address the high dimensionality and noise inherent in human language. Unstructured CVs are heavily polluted with formatting artifacts, morphological variations, and generic corporate phrasing. If I pass this raw text directly into a statistical model, the sheer volume of uninformative tokens will overwhelm the discriminative signal.
+
+To resolve this, I engineered my pipeline to rely on a foundational NLP sequence: Tokenization, Stop-Word Removal, and Morphological Lemmatization.
+
+\begin{definitionbox}{Morphological Lemmatization}
+Lemmatization is the algorithmic process of determining the ``lemma'' or dictionary base form of a word based on its intended part of speech. Unlike simplistic stemming (which merely heuristically chops off word endings), lemmatization utilizes a structural vocabulary and morphological analysis. For example, the terms ``analyzing'', ``analyzes'', and ``analyzed'' all collapse to the base token ``analyze'', systematically reducing vocabulary diversity without losing semantic meaning.
+\end{definitionbox}
+
+\vspace{0.5em}
+
+By aggressively lemmatizing the corpus and applying a custom blocklist for generic HR jargon (e.g., ``team player'', ``hardworking professional''), I dramatically compress the feature space. This guarantees that my downstream algorithms expend computational effort strictly on technical, discriminative nouns and verbs rather than decorative career phrasing.
+
+\section{Vector Space Models: From Sparse Counts to Dense Semantics}
+\label{sec:vsm}
+
+\subsection{TF-IDF: Derivation, Rationale, and Statistical Intuition}
+
+When first approaching the problem of lexical representation, I relied on a fundamental observation about recruitment corpora: not all words are equally informative. A term that appears in almost every document (such as ``experience'' or ``project'') carries essentially zero discriminative power. Conversely, a highly specialized tool that appears in only a handful of resumes (such as ``TensorFlow'' or ``GraphQL'') is a massive signal of candidate relevance when it does occur. Term Frequency--Inverse Document Frequency (TF-IDF) formalizes this intuition as a product of two independently motivated weights.
+
+\begin{definitionbox}{Term Frequency (TF)}
+For term $i$ inside document $j$, the raw term frequency $tf_{i,j}$ counts occurrences of $i$ in $j$. While I use raw counts in the base implementation, I apply log-scaled normalization ($1 + \log(tf_{i,j})$) to dampen the impact of extreme keyword repetition.
+\end{definitionbox}
+
+\vspace{0.5em}
+
+\begin{definitionbox}{Inverse Document Frequency (IDF)}
+\begin{equation}
+\text{idf}_i = \log\!\left(\frac{N}{\text{df}_i}\right)
+\label{eq:idf}
+\end{equation}
+where $N$ is the total number of documents in the training corpus and $\text{df}_i$ is the count of documents containing term $i$.
+\end{definitionbox}
+
+\vspace{0.5em}
+
+The logarithm in Equation~\eqref{eq:idf} is not an arbitrary smoothing choice---it is deeply rooted in Shannon's information theory. If a specific keyword appears in $\text{df}_i$ out of $N$ documents, its empirical probability is $p_i = \text{df}_i/N$, and $-\log p_i$ is exactly the self-information of observing that term. A ubiquitous term ($\text{df}_i = N$) yields zero self-information; a rare term yields highly magnified self-information. Combining both factors produces the final matrix weight:
+
+\begin{equation}
+\text{TF-IDF}(i,j) = tf_{i,j} \times \log\!\left(\frac{N}{\text{df}_i}\right)
+\label{eq:tfidf}
+\end{equation}
+
+\subsection{Cosine Similarity: The Geometry of Document Matching}
+
+Once I project resumes and job descriptions into a vector space, comparing two documents becomes a pure exercise in vector geometry. I deliberately reject Euclidean distance ($\lVert \mathbf{a} - \mathbf{b} \rVert_2$) as the primary metric: it is highly sensitive to vector magnitude, meaning a long, detailed resume would be geometrically pushed far away from a shorter job description regardless of their topical overlap. Cosine Similarity evaluates only the \emph{angle} between vectors, normalizing for document length entirely.
+
+\begin{definitionbox}{Cosine Similarity}
+For vectors $\mathbf{a}, \mathbf{b} \in \mathbb{R}^d$:
+\begin{equation}
+\cos(\mathbf{a}, \mathbf{b}) = \frac{\mathbf{a} \cdot \mathbf{b}}{\lVert \mathbf{a} \rVert_2 \, \lVert \mathbf{b} \rVert_2} = \frac{\sum_{k=1}^{d} a_k b_k}{\sqrt{\sum_{k=1}^{d} a_k^2}\sqrt{\sum_{k=1}^{d} b_k^2}}
+\label{eq:cosine_sim}
+\end{equation}
+This function is globally bounded in $[-1,1]$, and strictly bounded in $[0,1]$ for non-negative entries---which holds true for both TF-IDF sparse matrices and post-activation SBERT embeddings in practice.
+\end{definitionbox}
+
+\vspace{0.5em}
+
+Applying Equation~\eqref{eq:cosine_sim} to the sparse TF-IDF vectors $(\mathbf{u}_{\text{cv}}, \mathbf{v}_{\text{jd}})$ and the dense SBERT vectors $(\mathbf{e}_{\text{cv}}, \mathbf{e}_{\text{jd}})$ recovers exactly the $S_{\text{tfidf}}$ and $S_{\text{dense}}$ match scores that I utilize throughout the pipeline.
+
+\subsection{Dense Semantic Embeddings: Self-Attention and SBERT Bi-Encoders}
+\label{subsec:sbert}
+
+Sparse representation possesses a fatal mathematical blind spot: it is completely insensitive to semantic equivalence. A job posting seeking a ``Backend Developer'' and a candidate listing themselves as a ``Software Engineer'' share zero tokens, producing $S_{\text{tfidf}} = 0$ for a perfectly qualified applicant. Closing this gap requires spatial representations that have learned underlying semantic structures from vast data.
+
+The backbone of any Transformer model is the Self-Attention mechanism, which computes a weighted contextual representation for every token based on all other tokens in the sequence:
+
+\begin{equation}
+\text{Attention}(Q, K, V) = \text{softmax}\!\left(\frac{Q K^\top}{\sqrt{d_k}}\right)\!V
+\label{eq:attention}
+\end{equation}
+\vspace{0.5em}
+
+where $Q, K, V$ represent the Query, Key, and Value projection matrices. This allows the model to understand that the word ``Python'' placed near ``data pipeline'' denotes a programming language, while placed near ``zoo'' it denotes a reptile.
+
+However, feeding both a resume and a job description through a standard single BERT cross-encoder is computationally untenable for recruitment systems: every candidate--job pair requires a full $O(n^2 d)$ attention forward pass, making large-scale retrieval infeasible. To circumvent this bottleneck, I employ Reimers and Gurevych's \emph{bi-encoder} architecture:
+
+\begin{figure}[htbp]
+    \centering
+    \resizebox{0.82\linewidth}{!}{%
+    \begin{tikzpicture}[
+        node distance=0.9cm and 1.4cm,
+        box/.style={rectangle, draw=navyblue, fill=softblue, thick, rounded corners=4pt,
+                    minimum width=4.6cm, minimum height=1.0cm, align=center, font=\small, drop shadow},
+        poolbox/.style={rectangle, draw=navyblue, fill=white, thick, rounded corners=4pt,
+                        minimum width=4.6cm, minimum height=0.8cm, align=center, font=\small, drop shadow},
+        simbox/.style={rectangle, draw=navyblue, fill=navyblue, text=white, thick, rounded corners=4pt,
+                       minimum width=4.8cm, minimum height=1.0cm, align=center, font=\small, drop shadow},
+        arrow/.style={draw, -{Latex[length=3mm, width=2mm]}, thick, borderblue}
+    ]
+        \node [box] (cv) {Resume Text};
+        \node [box, right=3.6cm of cv] (jd) {Job Description Text};
+        \node [box, below=of cv]   (bert1) {BERT Encoder\\(shared weights)};
+        \node [box, below=of jd]   (bert2) {BERT Encoder\\(shared weights)};
+        \node [poolbox, below=of bert1] (pool1) {Mean Pooling $\to \mathbf{e}_{\text{cv}} \in \mathbb{R}^{768}$};
+        \node [poolbox, below=of bert2] (pool2) {Mean Pooling $\to \mathbf{e}_{\text{jd}} \in \mathbb{R}^{768}$};
+        \node [simbox, below=1.8cm of bert1, xshift=2.9cm] (sim) {Cosine Similarity $S_{\text{dense}}$};
+        \path [arrow] (cv)    -- (bert1);
+        \path [arrow] (jd)    -- (bert2);
+        \path [arrow] (bert1) -- (pool1);
+        \path [arrow] (bert2) -- (pool2);
+        \path [arrow] (pool1) |- (sim);
+        \path [arrow] (pool2) |- (sim);
+        \path [draw, dashed, borderblue] (bert1) -- node[above, font=\tiny, text=navyblue]{tied weights} (bert2);
+    \end{tikzpicture}%
+    }
+    \caption{The SBERT bi-encoder architecture: twin, weight-tied BERT towers independently embed each text, mean-pooling collapses token embeddings to a single 768-dimensional vector, and similarity is computed post-hoc via cosine distance.}
+    \label{fig:sbert_biencoder}
+\end{figure}
+
+Two independent encoders process the resume and job description separately, requiring only a single forward pass each. I perform the ultimate comparison in $O(d)$ via cosine similarity afterwards, gracefully reducing the retrieval cost from quadratic to linear across the corpus.
+
+\begin{remarkbox}{Why Not Use Raw BERT Token Averages?}
+Reimers and Gurevych conclusively demonstrated that averaging raw BERT token outputs performs measurably \emph{worse} than rudimentary GloVe sentence averages on semantic benchmarks. BERT was originally trained for masked-language modeling and next-sentence prediction---tasks that do not naturally necessitate a geometrically coherent sentence-level embedding space. SBERT's Siamese fine-tuning (against classification or regression objectives on sentence-pair similarity data) is the precise mechanism that forces cosine angles to map directly to human-perceived semantic proximity. Without it, the geometric intuition underpinning $S_{\text{dense}}$ would be entirely invalid.
+\end{remarkbox}
+
+\subsection{The Hybrid OLS Blend: A Constrained Linear Ensemble}
+
+To build a model that captures both deep semantic meaning and exact critical acronyms, I formulated the hybrid score $S_{\text{hybrid}} = w_0 + w_1 S_{\text{tfidf}} + w_2 S_{\text{dense}}$. I optimized this ensemble on the training split via Ordinary Least Squares (OLS): $\hat{\mathbf{w}} = (\mathbf{X}^\top\mathbf{X})^{-1}\mathbf{X}^\top\mathbf{y}$, where $\mathbf{X} = [\mathbf{1},\, S_{\text{tfidf}},\, S_{\text{dense}}]$. If the fitted $|w_2|$ heavily dominates $|w_1|$, the mathematics independently validate my core thesis that dense semantics are a substantially stronger predictor of candidate relevance than sparse lexical overlap.
+
+\section{Ranking Mathematics: Pointwise, Pairwise, and Listwise Paradigms}
+\label{sec:ranking_math}
+
+\subsection{Pointwise Optimization: Why Regression Fails Candidate Sorting}
+
+Phase 1 of my modeling pipeline evaluates standard Pointwise models (such as Ridge Regression and HistGradientBoosting) that seek to minimize Mean Squared Error (MSE):
+
+\begin{equation}
+\mathcal{L}_{\text{MSE}} = \frac{1}{N}\sum_{i=1}^{N}(y_i - \hat{y}_i)^2
+\label{eq:mse}
+\end{equation}
+
+MSE treats each prediction in a vacuum, with no gradient term coupling $\hat{y}_i$ and $\hat{y}_j$ for candidates $i, j$ located within the same query group. Consider a scenario with Candidate A (true human score 0.71) and Candidate B (true human score 0.69). If the model predicts $\hat{y}_A = 0.65$ and $\hat{y}_B = 0.68$, the squared errors $(0.06)^2 + (0.01)^2$ are incredibly small, creating the illusion of high accuracy. Yet, the model has completely inverted the recruiter's intended ranking ($\hat{y}_B > \hat{y}_A$). Pointwise optimizers are fundamentally blind to list inversion, necessitating a shift to list-aware paradigms.
+
+\subsection{Pairwise Optimization: The RankNet Probabilistic Model}
+\label{subsec:ranknet}
+
+RankNet (which forms the core logic inside \texttt{XGBRanker}) corrects this blindness by reframing ranking as pairwise classification. The probability that document $i$ is more relevant than document $j$ is mathematically modeled as a logistic sigmoid:
+
+\begin{equation}
+P_{ij} \equiv P(i \succ j) = \frac{1}{1 + e^{-\sigma(s_i - s_j)}}
+\label{eq:ranknet_prob}
+\end{equation}
+
+\vspace{0.5em}
+
+With ground-truth hierarchical labels $\bar{P}_{ij} = 1$ whenever $i$ is strictly more relevant, the network minimizes binary cross-entropy over all paired preferences:
+
+\begin{equation}
+C_{ij} = -\bar{P}_{ij}\log P_{ij} - (1-\bar{P}_{ij})\log(1-P_{ij})
+\label{eq:ranknet_ce}
+\end{equation}
+
+\vspace{0.5em}
+
+Substituting $\bar{P}_{ij}=1$ into Equation~\eqref{eq:ranknet_ce} simplifies the loss beautifully:
+
+\begin{align}
+C_{ij} = -\log P_{ij} = \log\!\left(1+e^{-\sigma(s_i-s_j)}\right)
+\label{eq:ranknet_derivation}
+\end{align}
+
+\vspace{0.5em}
+
+Summing this logarithmic loss over all relevant pairs in a localized query group $q$ recovers the exact pairwise loss optimized by \texttt{XGBRanker}:
+
+\begin{equation}
+\mathcal{L}_{\text{Pairwise}} = \sum_{i,j \in q} \log_2\!\left(1 + e^{-\sigma(s_i - s_j)}\right)
+\label{eq:pairwise_loss}
+\end{equation}
+
+\subsection{Listwise Optimization: LambdaMART and NDCG Gradients}
+\label{subsec:lambdamart}
+
+While Pairwise optimization solves pointwise blindness, it carries its own structural flaw: it treats a ranking swap at position 99 identically to a swap at position 1. In real-world Human Resources, this is unacceptable; a recruiter will only ever read the top 10 resumes. LambdaMART (which drives \texttt{LGBMRanker}) resolves this by overriding the neural gradient directly:
+
+\begin{equation}
+\lambda_{ij} = \frac{\partial C_{ij}}{\partial s_i} = \frac{-\sigma}{1+e^{\sigma(s_i-s_j)}} \cdot \big|\Delta Z_{ij}\big|
+\label{eq:lambda_gradient}
+\end{equation}
+
+\vspace{0.5em}
+
+Here $|\Delta Z_{ij}|$ represents the absolute shift in a top-heavy Information Retrieval metric, specifically $\text{NDCG}@K$, if we were to swap candidates $i$ and $j$:
+
+\begin{equation}
+\text{NDCG}@K = \frac{\text{DCG}@K}{\text{IDCG}@K}, \quad \text{DCG}@K = \sum_{i=1}^{K}\frac{2^{\text{rel}_i}-1}{\log_2(i+1)}
+\label{eq:ndcg}
+\end{equation}
+
+\vspace{0.5em}
+
+Because the logarithmic denominator, $\log_2(i+1)$, acts as a severe decay penalty, $|\Delta Z_{ij}|$ is automatically massive for top-rank swaps and near zero for tail swaps. My model explicitly concentrates its optimization bandwidth exactly where it matters most: the elite shortlist.
+
+\begin{insightbox}
+The $|\Delta\text{NDCG}_{ij}|$ multiplier in Equation~\eqref{eq:lambda_gradient} is the precise mathematical mechanism driving \texttt{LGBMRanker}'s superiority over \texttt{XGBRanker} in the empirical evaluations (Section~\ref{ch:results}). Both utilize the same underlying pairwise probability model, but only LambdaMART dynamically re-weights its gradient by rank-position sensitivity, forcing the algorithm to obsess over the Top-10 candidates.
+\end{insightbox}
+
+\section{Information Retrieval Evaluation: Spearman's Rank Correlation}
+\label{sec:spearman_theory}
+
+\begin{definitionbox}{Spearman's Rank Correlation ($\rho$)}
+Given a set of $n$ paired observations with rank discrepancies defined as $d_i = R_{X_i} - R_{Y_i}$:
+\begin{equation}
+\rho = 1 - \frac{6\sum_{i=1}^{n} d_i^2}{n(n^2-1)}
+\label{eq:spearman}
+\end{equation}
+This is statistically equivalent to computing the standard Pearson correlation directly on the rank ordinals, $\rho = \text{Pearson}\big(\text{rank}(X), \text{rank}(Y)\big)$.
+\end{definitionbox}
+
+\vspace{0.5em}
+
+\paragraph{Derivation.} Since $R_X$ and $R_Y$ are both permutations of the integer sequence $\{1,\ldots,n\}$, they share a predictable mean $\bar{R} = \frac{n+1}{2}$ and a strict sum of squared deviations $\frac{n(n^2-1)}{12}$. By geometrically expanding the squared rank discrepancy $\sum_i d_i^2$:
+
+\begin{align}
+\sum_i d_i^2 &= 2\cdot\frac{n(n^2-1)}{12} - 2\sum_i (R_{X_i}-\bar R)(R_{Y_i}-\bar R)
+\label{eq:spearman_exp}
+\end{align}
+
+\vspace{0.5em}
+
+I isolate the covariance-style cross term. Substituting this directly into the standard Pearson correlation formula allows the terms to collapse seamlessly:
+
+\begin{equation}
+\rho = \frac{\frac{n(n^2-1)}{12} - \frac{1}{2}\sum_i d_i^2}{\frac{n(n^2-1)}{12}} = 1 - \frac{6\sum_i d_i^2}{n(n^2-1)}
+\label{eq:spearman_proof}
+\end{equation}
+
+Spearman's $\rho$ penalizes rank discrepancies uniformly across all list positions, whereas $\text{NDCG}@K$ overwhelmingly down-weights errors below rank $K$ and ignores everything beyond it. Reporting both metrics simultaneously allows me to distinguish a ``globally stable hierarchical ordering'' from a ``highly accurate top-10 shortlist''---which represent distinct, practically important business claims.
+
+\section{Feature Engineering: The Experience Gap as a Bayesian Inference Problem}
+\label{sec:deltaE_theory}
+
+The semantic matching framework of Sections~\ref{sec:vsm}--\ref{sec:spearman_theory} accurately captures textual skill overlap, but ignores a second orthogonal signal: temporal fit. A candidate can be a perfect semantic match for a role but still be wholly unsuitable if they lack the minimum tenure required. I define this \emph{experience gap} as:
+
+\begin{equation}
+\Delta E = \text{Exp}_{\text{cand}} - \text{Exp}_{\text{req}}
+\label{eq:delta_e_def}
+\end{equation}
+
+\vspace{0.5em}
+
+Converting this raw numerical gap into a score adjustment requires a penalty function whose \emph{shape} mathematically encodes assumptions about recruiter risk perception. I formulate and rigorously compare three competing shapes.
+
+\subsection{The Cold-Start Problem: Why This Is a Bayesian Inference Task}
+\label{sec:cold_start}
+\label{subsec:bayes_motivation}
+
+In a mature, data-rich HR system, the natural statistical question is: ``What is the empirical probability that a candidate with $\Delta E = -3$ years succeeds in this role?'' I could answer this directly if I had access to a massive historical table of hire decisions and post-hire performance outcomes---a true empirical Bayesian likelihood table, $P(\text{success} \mid \Delta E\text{ bucket})$, calculated from real data.
+
+My dataset---and virtually every open-source academic recruitment corpus---does not carry this longitudinal information. The Neuralframe AI resume dataset contains resume text and job descriptions; it does not contain historical outcome labels (Was this candidate hired? Did they pass probation?). Building an empirical Bayesian table requires tracking actual hiring decisions across thousands of roles over several years, data that only exists at the enterprise institutional scale.
+
+This represents the classic \textbf{cold-start problem} in applied Bayesian statistics. The standard response is not to abandon probabilistic inference entirely, but to:
+
+\begin{enumerate}[noitemsep]
+    \item Replace the missing empirical likelihood with a \textbf{parametric approximation} whose shape mathematically encodes the qualitative behavior I believe the true relationship possesses.
+    \item Use whatever informative signal \textbf{is} available (the NLP semantic extraction) as the prior.
+    \item Design the architecture to be \textbf{upgradable}: once enough longitudinal hiring outcome data accumulates, the parametric approximation can be instantly swapped for a fitted empirical function without breaking anything downstream.
+\end{enumerate}
+
+\vspace{0.5em}
+
+This is precisely why I chose a Sigmoid function as the likelihood approximation (Section~\ref{subsec:sigmoid_bayes}): it is the natural parametric form for ``a probability that changes monotonically with a continuous predictor'', and it belongs to the same functional family underlying logistic regression---a principled statistical choice, not merely an aesthetic one.
+
+\subsection{Method A: The Linear Baseline}
+\label{subsec:method_a}
+
+\begin{definitionbox}{Linear Penalty}
+\begin{equation}
+\text{Penalty}_{\text{linear}}(\Delta E) =
+\begin{cases}
+k \cdot \Delta E, & \Delta E < 0 \\
+0, & \Delta E \ge 0
+\end{cases}
+\label{eq:linear_penalty}
+\end{equation}
+with $k = 0.05$ and providing no mathematical credit for surplus experience.
+\end{definitionbox}
+
+This serves as the industry baseline---it represents the underlying logic that most legacy, commodity ATS platforms effectively execute when they subtract points for experience shortfalls. Its primary virtue is transparent simplicity: every missing year of experience costs exactly $k$ points, with no hidden nonlinearities. I established this model strictly as a performance floor; my advanced formulations must logically and empirically outperform this trivial rule to justify their added computational complexity.
+
+\subsection{Method B: The Piecewise Quadratic Penalty (Deployed)}
+\label{subsec:method_b}
+
+\begin{definitionbox}{Piecewise Quadratic-Linear Penalty}
+\begin{equation}
+\text{Penalty}_{\text{quad}}(\Delta E) =
+\begin{cases}
+-\alpha \cdot (\Delta E)^2, & \Delta E < 0 \quad (\text{under-qualified}) \\
++\beta \cdot \Delta E, & \Delta E \ge 0 \quad (\text{requirement met})
+\end{cases}
+\label{eq:quadratic_penalty}
+\end{equation}
+Through iterative calibration on the training split, I empirically fixed these hyperparameters to $\alpha = 0.04$ and $\beta = 0.01$.
+\end{definitionbox}
+
+The quadratic term successfully encodes a genuine asymmetry in recruiter risk perception: a candidate missing four years of experience is not perceived as merely ``twice as bad'' as one missing two years---the perceived risk accelerates disproportionately. The small linear surplus reward ($\beta = 0.01$) rewards tenure without allowing over-qualified candidates to uniformly overshadow substantially better technical matches.
+
+\paragraph{The Saturation Threshold.} However, the quadratic formulation introduces a mathematically verifiable failure mode in the deficit tail. Given a baseline semantic $\texttt{Match\_Score} = m$, the adjusted score first crashes into the zero floor at:
+
+\begin{equation}
+m - \alpha(\Delta E^*)^2 = 0 \implies \Delta E^* = -\sqrt{\frac{m}{\alpha}}
+\label{eq:quad_threshold}
+\end{equation}
+
+\vspace{0.5em}
+
+For $m = 0.75$ and $\alpha = 0.04$: $\Delta E^* = -\sqrt{18.75} \approx -4.33$ years. Beyond this point, every candidate clips to an identical adjusted score of $0.0$, regardless of how much further below the threshold they fall. For a split-based learner like \texttt{LGBMRanker}, a feature that remains constant over a subrange carries \textbf{zero} information gradient for differentiating candidates within that dead zone.
+
+\subsection{Method C: The Sigmoid-Bayesian Posterior (Proposed)}
+\label{subsec:sigmoid_bayes}
+
+To overcome the saturation failure, I constructed a probabilistic model using the existing \texttt{Match\_Score} as a semantic prior and the Sigmoid function as the parametric likelihood approximation.
+
+\begin{definitionbox}{Prior: Semantic Competence Belief}
+\begin{equation}
+P(C) = \texttt{Match\_Score} \in (0,1)
+\label{eq:prior}
+\end{equation}
+The prior probability that a candidate is competent is taken directly from the SBERT semantic similarity score. This ensures experience is never evaluated in a vacuum; the baseline belief is fundamentally anchored in the candidate's actual extracted technical vocabulary.
+\end{definitionbox}
+
+\begin{definitionbox}{Sigmoid Likelihood}
+\begin{equation}
+L(\Delta E) = \frac{1}{1 + e^{-k_s(\Delta E - \delta)}}
+\label{eq:sigmoid_likelihood}
+\end{equation}
+This approximates $P(\text{observing this gap} \mid \text{candidate is competent})$ via a logistic decay curve. $k_s > 0$ controls the steepness of decay per year of shortfall; $\delta$ sets the inflection point (where ``meeting the requirement'' transitions from neutral to positive evidence). Mirroring the calibration procedure used for Method B, I fixed $k_s = 0.35$ and $\delta = 0$ on the training split, placing the neutral-evidence point exactly at $\Delta E = 0$.
+\end{definitionbox}
+
+\begin{definitionbox}{Posterior via Bayes' Rule}
+\begin{equation}
+P(C \mid \Delta E) = \frac{L(\Delta E)\, P(C)}{L(\Delta E)\, P(C) + \big(1 - L(\Delta E)\big)\big(1 - P(C)\big)}
+\label{eq:bayes_posterior}
+\end{equation}
+This relies on the standard Naive-Bayes assumption that the complementary hypothesis is evidenced by $1 - L(\Delta E)$.
+\end{definitionbox}
+
+\paragraph{The Log-Odds Identity.} To truly understand why this Bayesian fusion works, we must look at its log-odds transformation. Writing $\operatorname{logit}(p) = \ln\big(\tfrac{p}{1-p}\big)$, algebraic rearrangement gives:
+
+\begin{align}
+\operatorname{logit}\big(P(C \mid \Delta E)\big)
+&= \ln\!\left(\frac{L(\Delta E)}{1-L(\Delta E)}\right) + \ln\!\left(\frac{P(C)}{1-P(C)}\right) \notag \\
+&= \operatorname{logit}\big(L(\Delta E)\big) + \operatorname{logit}\big(P(C)\big)
+\label{eq:log_odds_identity}
+\end{align}
+
+\vspace{0.5em}
+
+The posterior log-odds is exactly equal to the \emph{sum} of the prior log-odds and the likelihood log-odds. This additive evidence-pooling identity is the mathematical engine powering logistic scorecards and Naive-Bayes classifiers. It allows me to seamlessly fuse two completely independent signals (NLP semantic fit and temporal experience fit) onto a shared, probabilistically sound log-odds scale, rather than arbitrarily subtracting a penalty from a similarity score.
+
+\begin{figure}[htbp]
+    \centering
+    \resizebox{0.95\linewidth}{!}{%
+    \begin{tikzpicture}[
+        node distance=1.0cm and 1.6cm,
+        box/.style={rectangle, draw=navyblue, fill=softblue, thick, rounded corners=4pt,
+                    minimum width=5.2cm, minimum height=1.2cm, align=center, font=\small, drop shadow},
+        bayesbox/.style={rectangle, draw=navyblue, fill=navyblue, text=white, thick, rounded corners=4pt,
+                         minimum width=6.0cm, minimum height=1.2cm, align=center, font=\small, drop shadow},
+        outbox/.style={rectangle, draw=borderblue, fill=white, thick, rounded corners=4pt,
+                       minimum width=6.0cm, minimum height=1.2cm, align=center, font=\small, drop shadow},
+        arrow/.style={draw, -{Latex[length=3mm, width=2mm]}, thick, borderblue}
+    ]
+        \node [box] (prior)      {\textbf{Prior} $P(C)$\\\texttt{Match\_Score} from SBERT};
+        \node [box, below=1.8cm of prior] (evidence)   {\textbf{Evidence} $\Delta E$\\$\text{Exp}_{\text{cand}} - \text{Exp}_{\text{req}}$};
+        \node [box, below=0.6cm of evidence] (likelihood) {\textbf{Likelihood} $L(\Delta E)$\\Sigmoid Decay Approximation};
+        \node [bayesbox, right=2.0cm of evidence] (bayes) {\textbf{Bayes' Rule Update}\\$P(C \mid \Delta E) \propto L(\Delta E) \cdot P(C)$};
+        \node [outbox, right=2.0cm of bayes]      (posterior) {\textbf{Posterior Score}\\Adjusted Competency $\in (0,1)$};
+        \path [arrow] (prior)      -| (bayes);
+        \path [arrow] (evidence)   -- (likelihood);
+        \path [arrow] (likelihood) -- (bayes);
+        \path [arrow] (bayes)      -- (posterior);
+    \end{tikzpicture}%
+    }
+    \caption{Bayesian evidence-combination DAG for the Sigmoid-Bayesian $\Delta E$ model. The semantic prior and the experience-derived likelihood are fused multiplicatively via Bayes' rule rather than added as independent penalty terms, allowing the same gap to produce different adjustments depending on the underlying prior strength.}
+    \label{fig:bayesian_logic}
+\end{figure}
+
+\subsection{Asymptotic Tail Analysis}
+\label{sec:tail_analysis}
+
+\paragraph{Method B reaches a hard floor at finite $\Delta E$.} As derived in Equation~\eqref{eq:quad_threshold}, every candidate with $\Delta E < \Delta E^* \approx -4.33$ years clips to an identical adjusted score of $0.0$. Two candidates at $\Delta E = -4.5$ and $\Delta E = -9$ become computationally indistinguishable; the feature carries zero discriminative variance in that region.
+
+\paragraph{Method C decays asymptotically but never terminates.} As $\Delta E \to -\infty$, I expand the sigmoid approximation asymptotically:
+
+\begin{equation}
+L(\Delta E) \sim e^{k_s(\Delta E - \delta)} \quad \text{as } \Delta E \to -\infty
+\label{eq:sigmoid_asymptotic}
+\end{equation}
+
+\vspace{0.5em}
+
+By substituting this into Equation~\eqref{eq:bayes_posterior}:
+
+\begin{equation}
+P(C \mid \Delta E) \sim \frac{P(C)}{1-P(C)}\, e^{k_s(\Delta E - \delta)} \quad \text{as } \Delta E \to -\infty
+\label{eq:posterior_asymptotic}
+\end{equation}
+
+\vspace{0.5em}
+
+The posterior decays \emph{exponentially} toward---but never hits---zero. Candidates at $\Delta E = -4.5$ and $\Delta E = -9$ differ by a factor of $e^{4.5 k_s}$ in their posteriors, preserving the ranking hierarchy. Method C maintains ranking-relevant information across the \emph{entire} real line, whereas Method B provably obliterates it beyond a threshold well within the observed applicant pool.
+
+\begin{insightbox}
+The key statistical advantage of the Sigmoid-Bayesian formulation is not just that it avoids a flat gradient region, but that the \emph{same} experience gap produces a \emph{different} posterior adjustment depending on the prior \texttt{Match\_Score}. A highly qualified candidate ($\texttt{Match\_Score} = 0.91$) with $\Delta E = -4.5$ years retains a posterior of $0.677$---the strong semantic prior rescues part of the confidence. A weak semantic match ($\texttt{Match\_Score} = 0.65$) with the exact same gap would fall substantially lower. Methods A and B, being purely additive, completely fail to express this interaction.
+\end{insightbox}
+
+\subsection{Mathematical and Behavioral Comparison}
+\label{sec:deltaE_comparison}
+
+Table~\ref{tab:method_comparison_math} summarizes the three formulations across the dimensions most relevant to their performance as \texttt{LGBMRanker} input features.
+
+\begin{table}[H]
+    \centering
+    \caption{Mathematical and behavioral comparison of the three $\Delta E$ penalty formulations.}
+    \label{tab:method_comparison_math}
+    \small
+    \begin{tabular}{>{\raggedright\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{3.4cm}>{\raggedright\arraybackslash}p{3.4cm}>{\raggedright\arraybackslash}p{3.8cm}}
+        \toprule
+        & \textbf{Linear (A)} & \textbf{Quadratic (B)} & \textbf{Sigmoid-Bayesian (C)} \\
+        \midrule
+        Output range & Unbounded (clipped) & Unbounded (clipped) & Naturally bounded $(0,1)$ \\
+        Deficit tail & Constant marginal penalty & Accelerating, clips to $0$ at $\Delta E^*$ & Exponential asymptotic decay \\
+        Surplus tail & No reward & Small linear reward & Diminishing-returns reward \\
+        Free params & $1$ ($k$) & $2$ ($\alpha, \beta$) & $2$ ($k_s, \delta$), probabilistically interpretable \\
+        Interaction with prior & None (additive) & None (additive) & Multiplicative via Bayes' rule \\
+        Interpretability & Very high & High & Moderate (needs translation) \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+To synthesize the theoretical groundwork laid out in this section, Table~\ref{tab:theory_summary} explicitly maps every mathematical construct I derived---from text vectorization to listwise ranking and Bayesian inference---to its specific empirical application within my deployed screening architecture. By grounding the pipeline in these proven statistical principles rather than relying on heuristic string-matching rules, the system moves beyond arbitrary ATS filtering. The mathematical models derived here ensure that the final algorithmic decisions---whether embedding a semantic concept or dynamically penalizing a tenure shortfall---are verifiable, globally stable, and structurally designed to optimize for an elite candidate shortlist.
+
+\begin{table}[H]
+\centering
+\caption{Theoretical foundations and their empirical applications in the CV screening architecture.}
+\label{tab:theory_summary}
+\small
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{4.2cm}>{\raggedright\arraybackslash}p{3.4cm}>{\raggedright\arraybackslash}p{5.0cm}@{}}
+\toprule
+\textbf{Theoretical Concept} & \textbf{Equation Form} & \textbf{Applied Pipeline Stage} \\
+\midrule
+TF-IDF Keyword Weighting & \eqref{eq:tfidf} & Lexical extraction ($S_{\text{tfidf}}$) \\
+Cosine Similarity & \eqref{eq:cosine_sim} & Vector matching ($S_{\text{tfidf}},S_{\text{dense}}$) \\
+Self-Attention Mechanism & \eqref{eq:attention} & \texttt{nomic-embed-text-v1.5} encoder \\
+Pointwise MSE Constraints & \eqref{eq:mse} & Regression Phase 1 baselines \\
+RankNet Pairwise Loss & \eqref{eq:pairwise_loss} & \texttt{XGBRanker} optimization \\
+LambdaMART Gradient & \eqref{eq:lambda_gradient} & \texttt{LGBMRanker} optimization \\
+Spearman's $\rho$ & \eqref{eq:spearman} & LTR global stability evaluation \\
+Linear Penalty & \eqref{eq:linear_penalty} & $\Delta E$ baseline (Method A) \\
+Quadratic Penalty & \eqref{eq:quadratic_penalty} & $\Delta E$ deployed (Method B) \\
+Sigmoid-Bayesian Posterior & \eqref{eq:bayes_posterior} & $\Delta E$ proposed (Method C) \\
+Log-Odds Identity & \eqref{eq:log_odds_identity} & Bayesian combination proof \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+By grounding the pipeline in these proven statistical principles rather than relying on heuristic string-matching rules, the system moves beyond arbitrary ATS filtering. The mathematical models derived here ensure that the final algorithmic decisions---whether embedding a semantic concept or dynamically penalizing a tenure shortfall---are verifiable, globally stable, and structurally designed to optimize for an elite candidate shortlist.

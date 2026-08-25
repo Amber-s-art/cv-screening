@@ -1,0 +1,40 @@
+\chapter{Recommendation}
+\label{ch:recommendation}
+
+The preceding statistical findings translate directly into operational value for an HR team. However, they also carry deployment costs that a production rollout must budget for, alongside several engineering extensions required before enterprise deployment. In this section, I set out concrete, prioritized recommendations across both dimensions.
+
+\section{Business Impact and Deployment Considerations}
+
+\subsection{Translating Ranking Quality into Business Value}
+
+Across the $9{,}369$-record corpus spanning 28 job postings, the average posting attracts on the order of 330 candidate applications. Under a legacy keyword-matching ATS, a meaningful fraction of these are \textbf{false negatives} --- highly qualified candidates discarded purely for phrasing their experience differently from the posting (see Section~\ref{sec:background_survey}). This failure forces a recruiter to either manually re-screen the rejected pile or simply miss elite talent entirely.
+
+My achieved \textbf{$\text{NDCG}@10 = 0.9398$} means the top-10 slots returned by my deployed \texttt{LGBMRanker} pipeline are, on average, almost indistinguishable in quality from the ideal top-10 ordering a human recruiter would construct with full information. In practical terms, this allows a recruiter to concentrate their review effort on a \textbf{short, high-precision shortlist} per posting rather than manually triaging the full applicant pool. This directly reduces time-to-shortlist and lowers the chance that a strong candidate is missed due to vocabulary mismatch alone. I recommend that organizations obtain a rigorous quantification of hours saved or cost-per-hire reduction via a controlled before/after deployment study as a natural next step.
+
+\subsection{Computational Latency and Real-Time Feasibility}
+
+In Table~\ref{tab:taxonomy_matching}, I characterized TF-IDF's computational cost as extremely low and dense semantic matching as moderate to high. It is worth being precise about where that cost actually falls. A TF-IDF lookup is a sparse dot product against a precomputed inverted index --- effectively instantaneous per query. SBERT, by contrast, requires a forward pass through a transformer encoder for every new piece of text. This is substantially more expensive per item and represents the dominant computational bottleneck of the dense-semantic approach.
+
+Critically, the system incurs this cost \textbf{once per resume at ingestion time}, not once per ranking query. My pipeline's artifact structure reflects this reality by precomputing and storing dense embeddings (\texttt{cv\_dense.npy}, \texttt{jd\_dense.npy}) rather than re-encoding candidates on every request. At ranking time, the system reuses these cached vectors and only executes cosine similarity and the already-trained \texttt{LGBMRanker}, both of which are highly efficient. 
+
+In a production setting, I recommend treating the \textbf{SBERT encoding step as a batch process} run on GPUs, placing it on the critical path only for genuinely new resumes or job postings. Before making any real-time deployment commitment, I propose formal wall-clock benchmarking of this pipeline end-to-end on representative production hardware.
+
+\section{Production Engineering and Future Extensions}
+\label{sec:future_work}
+
+Transitioning my current \texttt{LGBMRanker} backend into an enterprise-grade production system requires addressing several advanced statistical and engineering challenges. I have structured the following five recommendations as a logical roadmap, scaling from immediate backend optimizations to ultimate front-end user integration.
+
+\subsection{1. Full-Scale Bayesian Pipeline Integration}
+As derived in Section~\ref{sec:deltaE_theory} and partially validated in Section~\ref{sec:deltaE_empirical}, I have mathematically formulated a \textbf{Sigmoid-Bayesian posterior confidence model} for the Experience Gap ($\Delta E$). My immediate recommended next step is merging the Adjusted Score Sigmoid tensor into the primary \texttt{ml\_ready\_dataset.csv} feature space and executing a full-corpus retraining of \texttt{LGBMRanker}. This will produce a formal comparison of $\text{NDCG}@K$ and Spearman $\rho$ between the currently deployed quadratic rule and the proposed Bayesian posterior.
+
+\subsection{2. Transition to Fully Empirical Bayesian Inference}
+The Sigmoid likelihood function I deployed in this research is an expert-specified parametric approximation, adopted because the Neuralframe AI corpus lacks longitudinal hiring-outcome data (Section~\ref{sec:cold_start}). If such data becomes available --- through institutional partnerships or internal HR records --- I recommend discarding the Sigmoid approximation in favor of a \textbf{logistic regression model fit directly on observed binary outcomes} (e.g., hired/not-hired, successful/unsuccessful). The downstream architecture (Bayes' rule combination with the SBERT prior) would remain entirely unchanged; only the likelihood estimation method would shift from hand-specified to data-driven.
+
+\subsection{3. Counterfactual Bias Mitigation and Fairness}
+A critical ethical requirement for automated screening is ensuring the algorithm does not learn demographic or socioeconomic biases. There is a statistical risk that SBERT embeddings assign higher vector weights to candidates who list prestigious brands (e.g., ``Google'', ``McKinsey'') over candidates with equivalent technical skills from lesser-known entities. For future iterations, I recommend integrating \textbf{Stratified Counterfactual Sampling}: programmatically replacing prestigious corporate and university names with generic synthetic tokens (e.g., \texttt{[COMPANY\_A]}) during training. This forces the attention mechanism to optimize strictly on demonstrated technical competency.
+
+\subsection{4. Generative Explainability via Retrieval-Augmented Generation}
+The most significant barrier to HR adoption of ML systems is algorithmic opacity. To address this directly, I recommend extending the pipeline into a \textbf{Retrieval-Augmented Generation (RAG)} architecture. In this setup, \texttt{LGBMRanker} functions as the high-speed retrieval engine, surfacing the top-10 resumes; the system then passes these as context to a lightweight, quantized Large Language Model (LLM). The LLM's sole directive would be to generate a two-sentence justification for each candidate, mapping their specific extracted skills directly to the job description. This hybrid architecture delivers mathematical ranking precision alongside human-readable transparency.
+
+\subsection{5. Dashboarding and Business Intelligence Integration}
+The statistical work in this report ends at a ranked, scored candidate list; a production deployment requires a front-end layer that makes that list usable by non-technical HR staff. Because every candidate--job pair already reduces to a small set of interpretable numeric fields --- the \texttt{LGBMRanker} score, the Adjusted Competency Score $\in (0,1)$, and the underlying component similarities --- this output maps cleanly onto a standard \textbf{Business Intelligence (BI) workflow}. I recommend writing the ranked output per job posting to a lightweight database table connected to a tool like Power BI or Tableau. This constitutes a low-effort integration layer representing the most direct path from the current backend statistics to a daily operational tool.

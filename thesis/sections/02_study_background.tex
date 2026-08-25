@@ -1,0 +1,41 @@
+\chapter{Study Background}
+\label{ch:study_background}
+
+\section{The Case for Semantic Screening}
+\label{sec:background_survey}
+
+In the contemporary recruitment landscape, Applicant Tracking Systems (ATS) act as the primary gatekeepers between talent and opportunity. During my analysis of the algorithmic foundations of standard commercial ATS platforms, I observed a glaring inefficiency: the vast majority of these systems lean almost entirely on strict Boolean logic and exact keyword matching.
+
+I refer to this systemic failure mode as the \textbf{``False Negative Epidemic.''} For instance, consider a hiring manager who drafts a job description seeking a ``Software Engineer.'' If a highly qualified candidate submits a resume detailing five years of experience as a ``Backend Developer'' or ``Systems Programmer,'' a traditional lexical search engine will likely assign a relevance score of near zero. The algorithm remains fundamentally blind to the fact that these titles describe highly overlapping, if not identical, skill sets.
+
+Historically, HR departments have attempted to patch this vulnerability by manually inputting massive lists of synonyms, but this approach does not scale. It systematically penalizes candidates who possess the right skills but phrase their experience differently than the arbitrary terminology chosen by the recruiter.
+
+From an applied statistics perspective, I argue that this is not merely a software engineering bottleneck; it is a fundamental misframing of the problem. Traditional ATS algorithms treat candidate--job fit as a deterministic string-matching problem. In this project, I reframe resume screening as a probabilistic relevance and rank-correlation problem instead. By transitioning away from rigid character-matching, my goal is to engineer a tool that extracts the actual intent and semantic context behind an applicant's professional history. This allows my pipeline to process resumes with the nuance of a human recruiter, but at the computational velocity of a machine.
+
+
+\section{Lexical vs. Semantic Matching}
+\label{sec:taxonomy}
+
+To understand why my pipeline abandons traditional ATS keyword filters, we must look at how text retrieval fundamentally works. In the context of matching a candidate to a job, screening algorithms generally fall into one of two mathematical categories: Sparse Lexical Matching and Dense Semantic Matching. I summarize the core differences between these two paradigms in Table~\ref{tab:taxonomy_matching}.
+
+\begin{table}[htbp]
+\centering
+\caption{A comparative taxonomy of Sparse Lexical versus Dense Semantic screening paradigms.}
+\label{tab:taxonomy_matching}
+\small
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{5.6cm}>{\raggedright\arraybackslash}p{5.6cm}@{}}
+\toprule
+\textbf{Paradigm} & \textbf{Sparse Lexical (e.g., TF-IDF)} & \textbf{Dense Semantic (e.g., SBERT)} \\
+\midrule
+Mathematical Space & High-dimensional, sparse frequency arrays. & Low-dimensional, continuous dense tensors (e.g., $\mathbb{R}^{768}$). \\
+Core Mechanism & Counts exact $n$-gram overlap and term frequencies. & Maps contextual meaning via attention layers and bi-encoders. \\
+Primary Strength & High precision for exact, highly specific technical acronyms. & High recall; seamlessly handles synonyms and paraphrased intent. \\
+Failure Mode & Zero similarity if exact words are missing (Vocabulary Mismatch). & Can occasionally over-generalize highly distinct but contextually similar tools. \\
+Computational Cost & Extremely low ($O(1)$ lookup times with inverted indices). & Moderate to High (requires vector databases and cosine similarity sorting). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+As Table~\ref{tab:taxonomy_matching} illustrates, sparse lexical models like Term Frequency--Inverse Document Frequency (TF-IDF) are excellent at finding hyper-specific entities. If a recruiter searches for ``React.js,'' a sparse matrix will instantly flag resumes containing that exact string. However, these arrays possess zero understanding of semantic equivalence---if the candidate writes ``frontend JavaScript framework'' instead, the lexical model registers a score of zero.
+
+Conversely, dense semantic embeddings---like the Sentence-BERT (SBERT) tensors I deployed in this project---project entire candidate profiles into a geometric space. In this space, mathematically proximate vectors share similar meanings, regardless of their raw character composition. While I provide the formal mathematical derivation of both approaches in Section~\ref{ch:literature_review} (Literature Review), the conceptual takeaway for this project is straightforward: by upgrading from sparse matrices to dense semantic embeddings, my pipeline successfully bridges the linguistic gap between how a candidate describes their experience and how an employer writes a job description.

@@ -1,0 +1,162 @@
+\chapter{Annexure}
+\label{ch:annexure}
+
+\section{End-to-End Pipeline Architecture}
+\label{sec:appendix_flowchart}
+
+Figure~\ref{fig:pipeline_flowchart} provides a complete, annotated map of the data transformation sequence, from raw Kaggle ingestion through to the final NDCG-evaluated shortlist. In this diagram, I explicitly capture the three-way $\Delta E$ comparison introduced in Section~\ref{sec:deltaE_theory} alongside the group-aware partitioning proof from Equation~\eqref{eq:disjoint_split}.
+
+\begin{figure}[htbp]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    startstop/.style={
+        rectangle, rounded corners=8pt, draw=navyblue, fill=navyblue, text=white,
+        minimum width=7cm, minimum height=0.9cm, align=center, font=\small\bfseries, drop shadow
+    },
+    process/.style={
+        rectangle, draw=navyblue, fill=softblue,
+        minimum width=6.8cm, minimum height=0.85cm, align=center, font=\small, drop shadow
+    },
+    decision/.style={
+        rectangle, draw=borderblue, fill=white, dashed,
+        minimum width=6.8cm, minimum height=0.75cm, align=center, font=\scriptsize
+    },
+    phasebox/.style={
+        rectangle, draw=navyblue, fill=softblue,
+        minimum width=4.5cm, minimum height=1.1cm, align=center, font=\small, drop shadow
+    },
+    evalbox/.style={
+        rectangle, rounded corners=6pt, draw=navyblue, fill=navyblue!80, text=white,
+        minimum width=14cm, minimum height=0.85cm, align=center, font=\small\bfseries, drop shadow
+    },
+    arrow/.style={draw, -{Latex[length=3mm,width=2mm]}, thick, navyblue},
+    sidearrow/.style={draw, -{Latex[length=2.5mm,width=2mm]}, thick, borderblue},
+    node distance=0.55cm
+]
+\node [startstop] (ingest) {Raw Data Ingestion\\{\footnotesize Kaggle API --- 9,544 records, 35 fields}};
+\node [process, below=of ingest] (clean) {Text Cleaning \& Linguistic Filtering\\{\footnotesize spaCy lemmatization, 50+ jargon blocklist, length filter (20--350 words)}};
+\node [decision, below=0.25cm of clean] (filter) {Post-filter corpus: $9{,}369$ records $\times$ 28 job postings};
+\node [process, below=0.35cm of filter] (feat) {Feature Engineering\\{\footnotesize $\Delta E$ penalty (Methods A/B/C), Dynamic Role Flags}};
+\node [process, below=of feat] (embed) {Vector Space Representation\\{\footnotesize TF-IDF ($n$-grams, $k=8{,}000$), SBERT \texttt{nomic-embed-text-v1.5}, Hybrid OLS}};
+\node [process, below=of embed] (split) {Group-Aware Validation Split\\{\footnotesize \texttt{GroupShuffleSplit} by Job Title --- 80\,\% Train / 20\,\% Test (disjoint groups)}};
+\node [decision, below=0.25cm of split] (splitinfo) {Train: $7{,}356$ rows, 22 jobs \quad|\quad Test: $2{,}013$ rows, 6 unseen jobs};
+
+\node [phasebox, below=0.6cm of splitinfo, xshift=-5cm] (p1) {\textbf{Phase 1: Regression}\\Continuous Scoring\\{\footnotesize Linear, Ridge, HistGB}};
+\node [phasebox, below=0.6cm of splitinfo] (p2) {\textbf{Phase 2: Classification}\\Threshold Screening\\{\footnotesize Logistic, RF, SVC}};
+\node [phasebox, below=0.6cm of splitinfo, xshift=5cm] (p3) {\textbf{Phase 3: LTR}\\Candidate Rank Sorting\\{\footnotesize XGBRanker, LGBMRanker}};
+
+\node [evalbox, below=1.2cm of p2] (eval)
+    {Comprehensive Multi-Metric Evaluation\\
+     {\small Pointwise: RMSE, $R^2$ \quad$|$\quad Binary: ROC-AUC, $F_1$ \quad$|$\quad Listwise: NDCG@$K$, MRR, Spearman $\rho$}};
+
+\draw [arrow] (ingest)   -- (clean);
+\draw [arrow] (clean)    -- (filter);
+\draw [arrow] (filter)   -- (feat);
+\draw [arrow] (feat)     -- (embed);
+\draw [arrow] (embed)    -- (split);
+\draw [arrow] (split)    -- (splitinfo);
+
+\coordinate (fanpoint) at ([yshift=-0.4cm]splitinfo.south);
+\draw [arrow] (splitinfo.south) -- (fanpoint);
+\draw [sidearrow] (fanpoint) -| (p1.north);
+\draw [arrow]     (fanpoint) -- (p2.north);
+\draw [sidearrow] (fanpoint) -| (p3.north);
+
+\draw [sidearrow] (p1.south) |- (eval.west);
+\draw [arrow]     (p2.south) -- (eval.north);
+\draw [sidearrow] (p3.south) |- (eval.east);
+\end{tikzpicture}%
+}
+\caption{End-to-end architecture of the automated CV screening pipeline. The Feature Engineering stage encompasses all three $\Delta E$ formulations (Section~\ref{sec:deltaE_theory}). The disjoint group split guarantees zero-shot generalization on the hold-out test set (\eqref{eq:disjoint_split}).}
+\label{fig:pipeline_flowchart}
+\end{figure}
+
+\section{Hyperparameter Optimization Grids}
+\label{sec:appendix_hyperparams}
+
+Training advanced ranking estimators like \texttt{XGBRanker} and \texttt{LGBMRanker} involves navigating a complex hyperparameter space. This balancing act is crucial: the models need to be expressive enough to rank candidates accurately, but constrained enough to avoid overfitting. Because I conducted my evaluation under strict group-aware partitioning (see Section~\ref{sec:group_split}), my primary risk was vocabulary memorization. If a model simply memorized the specific keywords associated with the 22 training job titles, its performance would collapse on the 6 unseen test postings.
+
+To mitigate this, I ran a rigorous grid search over the parameters detailed in the tables below. I evaluated these grids using cross-validation exclusively on the training split, carefully selecting final values that maximized $\text{NDCG}@5$ on held-out training folds without ever exposing the model to the final test-set records.
+
+During tuning, I discovered that the most powerful regularization levers were \texttt{min\_child\_samples} (for LightGBM) and \texttt{min\_child\_weight} (for XGBoost). By raising these thresholds, I forced the algorithms to build tree splits supported by a larger pool of candidate records. This effectively stopped the models from creating hyper-specific rules based on the idiosyncratic phrasing of just one or two resumes. Additionally, I relied on row and feature subsampling (\texttt{subsample} and \texttt{colsample\_bytree}) to introduce stochastic randomness. This was vital because my Semantic Similarity feature was so dominant ($52.4\%$ split-gain) that, without subsampling, it would have completely crowded out other important nuances like the Experience Penalty ($\Delta E$) and role flags.
+
+Table~\ref{tab:lgbm_hyperparams} presents the search space and final configuration for my primary listwise model.
+
+\begin{table}[htbp]
+\centering
+\caption{\texttt{LGBMRanker} hyperparameter search grid and final selected configuration.}
+\label{tab:lgbm_hyperparams}
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Parameter} & \textbf{Search Grid} & \textbf{Selected Value} & \textbf{Role} \\
+\midrule
+\texttt{n\_estimators}       & 100, 300, 500, 800    & 500   & Total boosting rounds \\
+\texttt{learning\_rate}      & 0.01, 0.05, 0.1, 0.2 & 0.05  & Shrinkage per round \\
+\texttt{max\_depth}          & $-1$, 4, 6, 8         & 6     & Max tree depth ($-1$ = unlimited) \\
+\texttt{num\_leaves}         & 15, 31, 63, 127       & 31    & Max leaves per tree \\
+\texttt{min\_child\_samples} & 10, 20, 50, 100       & 20    & Min records per leaf \\
+\texttt{subsample}           & 0.6, 0.8, 1.0         & 0.8   & Row subsampling ratio \\
+\texttt{colsample\_bytree}   & 0.6, 0.8, 1.0         & 0.8   & Feature subsampling ratio \\
+\texttt{lambda\_l1}          & 0, 0.1, 0.5           & 0.1   & L1 regularization \\
+\texttt{lambda\_l2}          & 0, 0.1, 1.0           & 0.1   & L2 regularization \\
+\texttt{objective}           & \multicolumn{2}{l}{\texttt{lambdarank} (fixed)} & LambdaMART NDCG gradient \\
+\texttt{metric}              & \multicolumn{2}{l}{\texttt{ndcg} (fixed)}        & Evaluation during training \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+While the LightGBM architecture above utilizes a leaf-wise growth strategy, I also ran a parallel optimization process for the XGBoost model to ensure a fair algorithmic comparison. Because XGBoost traditionally builds trees level-by-level, its depth constraints and Hessian-based child weights require a slightly different tuning approach to achieve the same regularization effect. Table~\ref{tab:xgb_hyperparams} outlines the exact grid and final parameters I selected to optimize this pairwise ranking baseline.
+
+\begin{table}[htbp]
+\centering
+\caption{\texttt{XGBRanker} hyperparameter search grid and final selected configuration.}
+\label{tab:xgb_hyperparams}
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Parameter} & \textbf{Search Grid} & \textbf{Selected Value} & \textbf{Role} \\
+\midrule
+\texttt{n\_estimators}      & 100, 300, 500, 800    & 500   & Total boosting rounds \\
+\texttt{learning\_rate}     & 0.01, 0.05, 0.1, 0.2 & 0.05  & Shrinkage per round \\
+\texttt{max\_depth}         & 3, 4, 6, 8            & 6     & Max tree depth \\
+\texttt{min\_child\_weight} & 1, 5, 10, 20          & 5     & Min Hessian sum per leaf \\
+\texttt{subsample}          & 0.6, 0.8, 1.0         & 0.8   & Row subsampling ratio \\
+\texttt{colsample\_bytree}  & 0.6, 0.8, 1.0         & 0.8   & Feature subsampling ratio \\
+\texttt{gamma}              & 0, 0.1, 0.5, 1.0      & 0.1   & Min loss reduction for split \\
+\texttt{alpha}              & 0, 0.1, 0.5           & 0.1   & L1 regularization \\
+\texttt{lambda}             & 1, 2, 5               & 1     & L2 regularization \\
+\texttt{objective}          & \multicolumn{2}{l}{\texttt{rank:pairwise} (fixed)} & RankNet cross-entropy loss \\
+\texttt{eval\_metric}       & \multicolumn{2}{l}{\texttt{ndcg@5} (fixed)}        & Validation stopping metric \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For both architectures, I applied early stopping (\texttt{early\_stopping\_rounds = 50}) during training on a held-out validation fold of the training groups. This halted the boosting process as soon as the $\text{NDCG}@5$ metric ceased to improve. This safety mechanism prevented the models from arbitrarily adding trees that merely memorized training-group artifacts, ensuring the final $\text{NDCG}@10$ scores I reported in Chapter~\ref{ch:results} reflect genuine generalization capabilities.
+
+\section{Source Code Availability and Reproducibility}
+\label{sec:appendix_code}
+
+To guarantee complete algorithmic transparency and full scientific reproducibility, I have version-controlled the entire codebase for this project on GitHub. My repository contains all Python source code, including the centralized \texttt{utils.py} preprocessing library, the complete sequential Jupyter Notebooks (\texttt{01\_data\_preprocessing.ipynb} through \texttt{06\_experience\_gap\_modeling.ipynb}), and the standalone \texttt{method\_to\_take\_care\_experience\_gap.py} module where I implement all three $\Delta E$ penalty formulations derived in Section~\ref{sec:deltaE_theory}. The repository further includes the \texttt{ml\_ready\_dataset.csv} schema and a requirements file to enable full one-command replication. I direct examiners and practitioners to the links below:
+
+\begin{tcolorbox}[
+  colback=softblue, colframe=navyblue, arc=4pt, boxrule=1pt,
+  left=12pt, right=12pt, top=10pt, bottom=10pt
+]
+\textbf{\color{navyblue}GitHub Repository --- Full Source Code, Notebooks \& Module}\\[4pt]
+\url{https://github.com/Amber-s-art/cv-screening}\\[8pt]
+\textbf{\color{navyblue}Kaggle Dataset --- Neuralframe AI Resume Corpus (CC BY-NC 4.0)}\\[4pt]
+\url{https://www.kaggle.com/datasets/saugataroyarghya/resume-dataset}
+\end{tcolorbox}
+
+\section{Declarations}
+\label{sec:appendix_declarations}
+
+This section outlines the methodological provenance of the data used in this study, alongside formal declarations regarding data acquisition and AI assistance.
+
+\subsection*{Primary Data Collection}
+This project was entirely computational and empirical in nature. I relied exclusively on the algorithmic ingestion, text sanitization, and machine learning modeling of a secondary open-source dataset hosted on Kaggle (\texttt{saugataroyarghya/resume-dataset}, licensed CC BY-NC 4.0). I administered no primary human surveys, questionnaires, or sample interviews during this study.
+
+\subsection*{Generative AI Usage Declaration}
+I developed portions of the LaTeX typesetting, mathematical equation formatting, and diagram code in the original version of this report, as well as the reformatting of this report into the current structure, with the assistance of an AI language model. All statistical analysis, empirical results, model training, and interpretive conclusions are my original work. I thoroughly reviewed, verified against the actual experimental outputs, and revised any AI-assisted text prior to submission.

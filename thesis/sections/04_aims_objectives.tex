@@ -1,0 +1,26 @@
+\chapter{Aims \& Objectives}
+\label{sec:objectives}
+
+To push past the limitations of traditional keyword extraction, I anchored this initiative around five primary technical and statistical objectives:
+
+\begin{enumerate}[topsep=4pt, itemsep=4pt]
+    \item \textbf{Develop a Robust NLP Pipeline:} Transition from brittle, sparse lexical arrays (TF-IDF) to \textbf{dense semantic tensors}. By applying morphological lemmatization and domain-specific blocklists, I isolate genuine technical signals before projecting candidate profiles into a geometric space using \textbf{SBERT bi-encoders}.
+    
+    \item \textbf{Enforce Data Leakage Prevention:} Eliminate the risk of vocabulary memorization by constructing a strict \textbf{\texttt{GroupShuffleSplit}} architecture. Partitioning the training and test matrices by discrete job roles mathematically guarantees the pipeline is evaluated strictly on its true \textbf{zero-shot generalization} capabilities.
+    
+    \item \textbf{Benchmark Baseline Estimators:} Expose the structural blindness of pointwise regression (MSE) and threshold-based binary classification (BCE), empirically proving that \textbf{predicting absolute relevance scores fails} to capture the inherently comparative, ordinal nature of human recruitment.
+    
+    \item \textbf{Deploy Listwise LTR Frameworks:} Shift the optimization objective to top-heavy Information Retrieval metrics (\textbf{NDCG@10}) by evaluating gradient-boosted ranking estimators. I specifically contrast pairwise probability networks (\textbf{\texttt{XGBRanker}}) against listwise LambdaMART gradient scaling (\textbf{\texttt{LGBMRanker}}).
+    
+    \item \textbf{Mathematically Model the Experience Gap ($\Delta E$):} Formalize recruiter intuition regarding tenure mismatches by replacing ad-hoc HR rules with \textbf{probabilistically sound functions}. I construct and evaluate a piecewise quadratic threshold against a novel \textbf{Sigmoid-Bayesian posterior} to handle temporal fit under data-scarce (cold-start) conditions.
+\end{enumerate}
+
+
+\subsection{Engineering Relevance and Statistical Integrity}
+\label{subsec:engineering_relevance}
+
+It is important to clarify the true scope of this work. I did not approach this project as a mere software engineering exercise---simply wiring APIs together to build a dashboard. Instead, my primary focus was on ensuring \textbf{empirical validity, algorithmic fairness, and statistical integrity}.
+
+When applying machine learning to human resources, the risk of \textbf{data leakage and training--serving skew} is exceptionally high. If I had trained the algorithm on a random split of resumes, it would likely have just memorized the specific vocabulary of the job postings in the training set. Consequently, if deployed in production against a brand-new job description, its predictive performance would completely collapse. To eliminate this vulnerability, I implemented strict \textbf{\texttt{GroupShuffleSplit} validation architectures}, which actively forced my models to evaluate \textbf{completely unseen job groups}.
+
+Furthermore, standard pointwise regression models are statistically ill-equipped for recruitment. Predicting that a candidate is an ``85\% match'' is meaningless in a vacuum. Recruitment is inherently a \textbf{sorting problem}---the true goal is to identify the \textbf{best relative fit} within a specific applicant pool. By benchmarking continuous regression against binary classification, and ultimately deploying specialized \textbf{Learning-to-Rank (LTR) gradient estimators}, I was able to rigorously isolate the optimal mathematical framework for \textbf{human-centric candidate ranking}.

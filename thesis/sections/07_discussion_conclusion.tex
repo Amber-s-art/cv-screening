@@ -1,0 +1,28 @@
+\chapter{Discussion and Conclusion}
+\label{ch:discussion}
+
+My primary objective in this research was to dismantle the rigid, keyword-matching architectures that dominate commercial Applicant Tracking Systems and replace them with a mathematically grounded, human-centric pipeline. My empirical benchmarking across three distinct paradigms --- Continuous Regression, Binary Classification, and Learning-to-Rank --- yielded three definitive conclusions, which I discuss in turn below.
+
+\begin{keyresult}{Finding 1 --- Dense Semantics Beat Lexical Matching}
+SBERT embeddings (\texttt{nomic-embed-text-v1.5}) identify semantic equivalences (``Backend Developer'' $\leftrightarrow$ ``Software Engineer'') that TF-IDF assigns a cosine similarity of zero. My optimal LTR architecture achieves $\text{NDCG}@10 = 0.9398$ vs.\ a TF-IDF-only \texttt{LGBMRanker} score of $0.9158$.
+\end{keyresult}
+
+This finding forms the empirical backbone of my entire thesis. It confirms, quantitatively, the qualitative argument I raised in Section~\ref{sec:background_survey}: legacy ATS platforms do not merely have a \textit{worse} matching algorithm than a semantic one --- they are answering a fundamentally different, and largely wrong, question. A lexical system asks ``do these two documents share the same words?'', while a semantic system asks ``do these two documents describe the same underlying reality?''. The gap between a TF-IDF cosine similarity of zero and a correctly identified equivalence is precisely the population of qualified candidates a keyword-only ATS silently discards.
+
+\begin{keyresult}{Finding 2 --- Listwise Ranking is the Correct HR Paradigm}
+Regression ($R^2 = 0.3202$) and Classification (ROC-AUC $= 0.8121$) both fail to produce an ordered shortlist. My LambdaMART-driven \texttt{LGBMRanker} directly optimizes $\text{NDCG}@K$, solving the recruitment problem as a list-sorting task --- which is what it actually is.
+\end{keyresult}
+
+This finding reframes what ``success'' should even mean for a screening model. A regression model that predicts scores accurately in isolation, or a classifier that separates ``shortlisted'' from ``rejected'' with high accuracy, can both still fail the end user completely, because neither produces the one artifact a recruiter actually needs: an ordered list of who to look at first. I designed the Tri-Framing comparison in this report specifically to make that gap visible and measurable rather than assumed, and my results (Chapter~\ref{ch:results}) confirm it directly --- the listwise \texttt{LGBMRanker} is not simply the best-performing model on a shared metric, it is the only one of the three paradigms optimizing for the right objective in the first place.
+
+\begin{keyresult}{Finding 3 --- GroupShuffleSplit Validation is Mandatory}
+Strict group-aware partitioning by job title (22 training jobs / 6 unseen test jobs) prevents vocabulary memorization and guarantees genuine zero-shot generalization. Without it, NDCG scores would be inflated and non-deployable.
+\end{keyresult}
+
+This finding is as much a methodological warning as a result. Every number I reported in Chapter~\ref{ch:results} is only meaningful because I constructed the test set to be genuinely unseen at the job-posting level, not merely at the row level. A random row-wise split on this same data would very plausibly have produced similarly high --- or even higher --- NDCG scores, while measuring almost nothing about real-world generalization. The strict group-aware design is therefore not a peripheral implementation detail; it is the reason the headline $\text{NDCG}@10 = 0.9398$ result can be trusted at all.
+
+\section{Concluding Remarks}
+
+Taken together, these three findings support a single, coherent conclusion: we must build automated resume screening as a dense-semantic, listwise ranking system, validated under strict group-aware splitting --- not as a keyword classifier, and not as a plain regression or accept/reject model. The Sigmoid-Bayesian Experience Gap formulation I proposed in Section~\ref{sec:deltaE_theory} further shows that even a secondary, non-semantic signal like temporal fit benefits from the same underlying discipline: replacing a hard, ad-hoc cutoff with a probabilistically grounded, upgradable model that degrades gracefully rather than catastrophically at the extremes.
+
+The pipeline I built and evaluated in this report should be read as a validated architecture and a set of empirically justified design decisions, rather than a finished production product. In Chapter~\ref{ch:recommendation}, I set out what stands between this research result and a deployable system --- spanning business-impact framing, latency planning, fairness safeguards, explainability, and a front-end integration path --- so that the statistical case I have made here can translate into a robust operational tool.

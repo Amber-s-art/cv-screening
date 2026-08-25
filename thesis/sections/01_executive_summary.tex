@@ -1,0 +1,25 @@
+\chapter{Executive Summary}
+\label{ch:executive_summary}
+
+The recruitment industry heavily relies on \textbf{Applicant Tracking Systems (ATS)} that use rigid keyword-matching paradigms. Unfortunately, this means highly qualified candidates are routinely rejected simply because their resumes do not mirror the exact vocabulary of a job description. To solve this, I designed and validated an automated, human-centric resume screening pipeline that replaces brittle keyword filters with \textbf{Natural Language Processing (NLP)} and \textbf{Learning-to-Rank (LTR)} machine learning.
+
+My research tackles the challenge of candidate--job fit from two fundamental angles:
+\begin{itemize}
+    \item \textbf{Semantic Understanding:} I contrasted traditional sparse statistical arrays (TF-IDF) against \textbf{dense semantic tensors (Sentence-BERT)}. This allows the system to understand the actual meaning behind a candidate's skills, rather than just counting overlapping words.
+    \item \textbf{Human Intuition Modeling:} Beyond text, I formalized how a candidate's ``Experience Gap'' (the difference between their years of experience and the job's requirement) should impact their score. I compared a linear baseline and a piecewise quadratic penalty against a novel \textbf{Sigmoid-Bayesian posterior confidence framework}. I engineered this Bayesian approach specifically to replicate human judgment in the absence of massive historical hiring datasets.
+\end{itemize}
+
+To guarantee that this system works in the real world, I eliminated target leakage---a critical risk where models just memorize historical job buzzwords. I evaluated every model using a strict \textbf{\texttt{GroupShuffleSplit}} architecture, ensuring that test-time job postings were completely unseen during the training phase. 
+
+I then benchmarked three different modeling paradigms head-to-head: continuous regression, binary classification, and specialized Learning-to-Rank estimators. The results were unambiguous: regression and classification both fail to produce what a recruiter actually needs---a ranked shortlist.
+
+\textbf{Key Research Achievements:}
+\begin{itemize}
+    \item \textbf{Optimal Architecture:} I identified \textbf{\texttt{LGBMRanker}}, driven by LambdaMART gradients over dense SBERT embeddings, as the superior framework.
+    \item \textbf{Peak Accuracy:} The system achieved an outstanding Normalized Discounted Cumulative Gain in the top 10 results (\textbf{NDCG@10}) of \textbf{0.9398}, proving the model's top recommendations closely match ideal human-curated shortlists.
+    \item \textbf{Baseline Superiority:} The listwise ranking approach structurally outperformed both continuous regression ($R^2 = 0.3202$) and binary classification (ROC-AUC $= 0.8121$) baselines.
+\end{itemize}
+
+These findings confirm that candidate screening is fundamentally a \textbf{listwise sorting problem}, not an absolute scoring or pass/fail task. By deploying gradient-boosted ranking algorithms over dense semantic embeddings, we can directly resolve the limitations of deterministic ATS platforms. 
+
+Beyond the statistical wins, this pipeline delivers tangible operational value. In my study corpus, an average job posting attracted roughly 330 applications. By accurately narrowing this down to a high-precision \textbf{top-10 shortlist}, this system significantly reduces the manual screening burden on HR professionals. In Section~\ref{ch:recommendation} (Recommendation), I outline the concrete steps---including computational latency planning, counterfactual bias mitigation, and business-intelligence integration---required to successfully transition this research prototype into a \textbf{production-ready enterprise system}.
