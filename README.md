@@ -3,22 +3,24 @@
 ![Python Version](https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python)
 ![Jupyter Notebook](https://img.shields.io/badge/Jupyter-Notebook-orange?style=for-the-badge&logo=jupyter)
 ![Made with Google Colab](https://img.shields.io/badge/Made%20with-Colab-F9AB00?style=for-the-badge&logo=googlecolab)
+![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 Applicant Tracking Systems (ATS) historically rely on rigid, lexical keyword matching, frequently discarding highly qualified candidates who lack exact phrase alignments. This project resolves this structural inefficiency by engineering an automated, human-centric resume screening pipeline grounded in deep Natural Language Processing (NLP) and Learning-to-Rank (LTR) algorithms.
 
-**Author:** Amber Agrawal
-**Institution:** Symbiosis Statistical Institute (MSc Applied Statistics, 2025–2027)
-**Affiliation:** IDEAS Foundation, ISI Kolkata
-**Project Guide:** Dr. Dipasree Pal
-**Internship Period:** 18th May 2026 – 31st July 2026
+**Author:** Amber Agrawal  
+**Institution:** Symbiosis Statistical Institute (MSc Applied Statistics, 2025–2027)  
+**Affiliation:** IDEAS Foundation, ISI Kolkata  
+**Project Guide:** Dr. Dipasree Pal  
 
 ---
 
 ## 📊 Project Overview
 
-Conventional recruitment infrastructures exhibit severe algorithmic vulnerabilities by relying almost exclusively on exact lexical overlap (TF-IDF / Boolean search). When a hiring manager searches for "Software Engineer" and a candidate lists "Backend Developer," legacy systems discard qualified talent due to vocabulary mismatch — not a genuine capability gap.
+Conventional recruitment infrastructures exhibit severe algorithmic vulnerabilities by relying almost exclusively on exact lexical overlap (TF-IDF / Boolean search). When a hiring manager searches for "Software Engineer" and a candidate lists "Backend Developer," legacy systems discard qualified talent due to vocabulary mismatch—not a genuine capability gap.
 
-This project decouples candidate evaluation from rigid Boolean queries by prioritizing semantic relevance. It evaluates dense bi-encoder representations — specifically **Sentence-BERT-style embeddings** (`nomic-embed-text-v1.5`) — against baseline TF-IDF statistical term frequencies, across three distinct modelling paradigms: pointwise regression, binary classification, and listwise Learning-to-Rank. It further contributes a from-first-principles Bayesian treatment of the candidate "Experience Gap," comparing a linear baseline and a deployed piecewise-quadratic penalty against a novel Sigmoid-Bayesian posterior formulation.
+This project decouples candidate evaluation from rigid Boolean queries by prioritizing semantic relevance. It evaluates dense bi-encoder representations—specifically **Sentence-BERT embeddings** (`nomic-embed-text-v1.5`)—against baseline TF-IDF statistical term frequencies, across three distinct modelling paradigms: pointwise regression, binary classification, and listwise Learning-to-Rank. 
+
+It further contributes a first-principles Bayesian treatment of the candidate "Experience Gap," comparing a linear baseline and a piecewise-quadratic penalty against a novel **Sigmoid-Bayesian posterior formulation**.
 
 ### 🎯 Key Achievements
 
@@ -28,40 +30,31 @@ This project decouples candidate evaluation from rigid Boolean queries by priori
 | NDCG@10 (Ranking) | 0.9158 | **0.9398** | +2.6% |
 | Split-Gain Feature Importance | 5.2% | **52.4%** | +908% |
 
-*(Split-gain figures are the LGBMRanker feature-importance share for TF-IDF similarity vs. SBERT semantic similarity, respectively — see Chapter 5 / Appendix B of the thesis.)*
+*(Split-gain figures represent the LGBMRanker feature-importance share for TF-IDF similarity vs. SBERT semantic similarity. See Chapter 6 of the thesis for full empirical breakdowns.)*
 
 ---
 
 ## 🧰 Technology Stack
 
-Inferred directly from the notebook imports and `notebook/utils.py`.
-
 ### Core Data Processing
-- **Data Wrangling:** pandas, NumPy
-- **Linguistic NLP:** spaCy (`en_core_web_sm`) — tokenization, lemmatization, custom stop-words
+* **Data Wrangling:** `pandas`, `numpy`
+* **Linguistic NLP:** `spaCy` (`en_core_web_sm`) — tokenization, lemmatization, custom HR blocklists
 
 ### Vectorization & Embeddings
-- **Statistical Vectors:** scikit-learn `TfidfVectorizer` / `CountVectorizer`
-- **Neural Embeddings:** `sentence-transformers` with `nomic-embed-text-v1.5` (768-dimensional dense vectors)
+* **Statistical Vectors:** `scikit-learn` (`TfidfVectorizer`)
+* **Neural Embeddings:** `sentence-transformers` (`nomic-embed-text-v1.5` 768-dimensional dense vectors)
 
 ### Machine Learning & Ranking
-- **Regression Baselines:** `LinearRegression`, `Ridge`, `RandomForestRegressor`, `HistGradientBoostingRegressor`, `StackingRegressor`
-- **Classification Baselines:** `LogisticRegression`, `RandomForestClassifier`, `SVC`
-- **Learning-to-Rank:** LightGBM (`LGBMRanker`), XGBoost (`XGBRanker`) with LambdaMART / pairwise objectives
-- **Evaluation:** `scikit-learn` metrics (`ndcg_score`, ROC-AUC, F1, RMSE, R²), `scipy.stats.spearmanr`
-
-### Infrastructure
-- **Development environment:** Google Colab (notebooks mount Google Drive and read Colab secrets via `google.colab.userdata`) — a couple of small edits are needed to run them as plain local Jupyter notebooks instead (see [Getting Started](#-getting-started--reproducibility))
-- **Dataset acquisition:** `kaggle` API
-- **Serialization:** `joblib`
-
-> **Note:** there is currently no `requirements.txt` or `LICENSE` file in this repository. If you'd like others to reproduce this environment easily, consider adding a pinned `requirements.txt` (a starting list is in [Getting Started](#-getting-started--reproducibility) below) and a `LICENSE` file for the code itself, separate from the dataset's CC BY-NC 4.0 terms.
+* **Regression Baselines:** `LinearRegression`, `Ridge`, `RandomForestRegressor`, `HistGradientBoostingRegressor`
+* **Classification Baselines:** `LogisticRegression`, `RandomForestClassifier`, `SVC`
+* **Learning-to-Rank:** LightGBM (`LGBMRanker`), XGBoost (`XGBRanker`) optimizing LambdaMART & Pairwise objectives
+* **Evaluation:** `ndcg_score`, `roc_auc_score`, `scipy.stats.spearmanr`
 
 ---
 
 ## ⚙️ Architecture & Pipeline Flow
 
-The pipeline runs across modular phases to preserve structural integrity and prevent training-serving skew:
+The pipeline is modularized to preserve structural integrity and prevent training-serving skew through strict `GroupShuffleSplit` validation:
 
 ```mermaid
 graph TD
@@ -99,40 +92,28 @@ cv-screening/
 │
 ├── data/                                   # Engineered features & artefacts
 │   ├── ml_ready_dataset.csv                # Cleaned tabular dataset (9,369 records)
-│   ├── cv_dense.npy                        # SBERT dense vectors (resumes)
-│   ├── jd_dense.npy                        # SBERT dense vectors (job descriptions)
-│   ├── cv_tfidf.npz                        # Sparse TF-IDF matrix (resumes)
-│   ├── jd_tfidf.npz                        # Sparse TF-IDF matrix (job descriptions)
-│   ├── tfidf_vectorizer.pkl                # Fitted TF-IDF vectorizer
-│   └── objective_fit_neutral_value.pkl     # Contextual objective-fit artefact
+│   ├── cv_dense.npy / jd_dense.npy         # SBERT dense vectors 
+│   ├── cv_tfidf.npz / jd_tfidf.npz         # Sparse TF-IDF matrices
+│   └── tfidf_vectorizer.pkl                # Fitted TF-IDF vectorizer
 │
-├── notebook/                               # Core experimental notebooks (run in this order)
+├── notebook/                               # Core experimental notebooks
 │   ├── 01_data_preprocessing.ipynb         # Ingestion, cleaning, EDA, feature engineering
 │   ├── 03_phase1_regression.ipynb          # Pointwise regression (RMSE, R²)
 │   ├── 04_phase2_classification.ipynb      # Binary classification (ROC-AUC, F1)
 │   ├── 05_phase3_learning_to_rank.ipynb    # Listwise LTR (LGBMRanker vs. XGBRanker)
-│   ├── 06_experience_gap_modeling.ipynb    # Linear / Quadratic / Sigmoid-Bayesian ΔE comparison
+│   ├── 06_experience_gap_modeling.ipynb    # Linear / Quadratic / Sigmoid-Bayesian ΔE
 │   └── utils.py                            # Shared cleaning & feature-extraction utilities
 │
-├── thesis/                                 # Full academic report (LaTeX source + compiled PDF)
+├── thesis/                                 # Full academic report (LaTeX source + PDF)
 │   ├── main.tex
-│   ├── main.pdf
-│   ├── chapters/
-│   │   ├── chapter1_introduction.tex
-│   │   ├── chapter2_theoretical_foundations.tex
-│   │   ├── chapter3_dataset_eda.tex
-│   │   ├── chapter4_experimental_design.tex
-│   │   ├── chapter5_results.tex
-│   │   ├── chapter6_conclusion.tex
-│   │   └── appendices.tex
+│   ├── thesis.pdf
+│   ├── sections/                           # LaTeX sections
 │   └── images/                             # Figures referenced by the report
 │
-├── results/                                # Per-phase result write-ups (Word documents)
-│   ├── regresion prob.docx
-│   ├── clasification prob.docx
-│   └── rank problem.docx
-│
-└── finnal internship presentation .mp4     # Recorded final presentation
+└── results/                                # Per-phase result write-ups
+    ├── regresion_prob.docx
+    ├── clasification_prob.docx
+    └── rank_problem.docx
 ```
 
 > **Note on notebook numbering:** there is no `02_...ipynb` in the `notebook/` folder — numbering goes `01`, then `03`–`06`. This is the real, current file set; renumber if you'd prefer a gapless sequence.
@@ -156,25 +137,26 @@ cv-screening/
    cd cv-screening
    ```
 
-2. **Create a virtual environment:**
+2. **Create a virtual environment & install dependencies:**
    ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+    python3 -m venv venv
+    source venv/bin/activate  # On Windows: venv\Scripts\activate
+    
+    pip install pandas numpy scipy scikit-learn lightgbm xgboost \
+                sentence-transformers spacy wordcloud seaborn matplotlib \
+                torch tqdm joblib kaggle
+    
+    python -m spacy download en_core_web_sm
    ```
 
-3. **Install dependencies** — there's no pinned `requirements.txt` in the repo yet, but this covers everything imported across the notebooks:
-   ```bash
-   pip install pandas numpy scipy scikit-learn lightgbm xgboost \
-               sentence-transformers spacy wordcloud seaborn matplotlib \
-               torch tqdm joblib kaggle
-   python -m spacy download en_core_web_sm
-   ```
-
-4. **Download the Kaggle dataset:**
+3. **Download the Kaggle dataset:**
    ```bash
    kaggle datasets download -d saugataroyarghya/resume-dataset
    unzip resume-dataset.zip -d data/
    ```
+   
+4. Run the Pipeline:
+    Execute the notebooks in numerical order (01 through 06). Note: These notebooks were originally developed in Google Colab. If running locally, simply update the Google Drive mount paths to your local directory structure.
 
 ### A note on Google Colab
 
